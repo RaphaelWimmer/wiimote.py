@@ -29,6 +29,72 @@ def connect(btaddr, model=None):
     else:
         raise Exception("Wiimote model '%s' unknown!" % (model))
 
+class Buttons(object):
+    
+    def __init__(self, device):
+        self._device = device
+        self._state = {}
+        for button in Buttons.BUTTONS:
+            self._state[button] = False
+
+    def __len__(self):
+        return len(self._state)
+
+    def __repr__(self):
+        return repr(self._state)
+
+    def __getitem__(self, btn):
+        if btn in Buttons.BUTTONS:
+            return self._state[btn]
+        else:
+            raise KeyError(str(btn))
+
+    def _update(self, report):
+        pass
+
+    def _register_callback(self, btn, func):
+        pass # todo
+
+class LEDs(object):
+
+    def __init__(self, device):
+        self._state = [False, False, False, False]
+        self._device = device
+
+    def __len__(self):
+        return len(self._state)
+
+    def __repr__(self):
+        return repr(self._state)
+
+    def __getitem__(self, led_no):
+        if 0 <= led_no <= 3:
+            return self._state[led_no]
+        else:
+            raise IndexError("list index out of range")
+
+    def __setitem__(self, led_no, val):
+        new_led_state = self._state
+        if 0 <= led_no <= 3:
+            new_led_state[led_no] = True if val else False
+            self.set_leds(new_led_state)
+        else:
+            raise IndexError("list index out of range")
+
+    def set_leds(self, led_list):
+        for led_no, val in enumerate(led_list):
+            self._state[led_no] = True if val else False
+        self.send_led_state()
+
+    def send_led_state(self):
+        RPT_LED = 0x11
+        led_byte = 0x00
+        for val, state in zip([0x10, 0x20, 0x40, 0x80], self._state):
+            if state:
+               led_byte += val
+        self._device._send(RPT_LED, led_byte)
+
+
 class WiiMote(object):
 
     # instance methods
@@ -36,7 +102,7 @@ class WiiMote(object):
         self.btaddr = btaddr
         self.model = "Nintendo RVL-CNT-01"
         self.connected = False
-        self._leds = [False, False, False, False]
+        self._leds = LEDs(self)
         self._socket = None
         
         self.connect()
@@ -75,14 +141,9 @@ class WiiMote(object):
 
     def set_leds(self, led_list):
         if len(led_list) != len(self._leds):
-            raise IndexError("List length needs to be exactly %d!" % len(self._leds))
+            raise IndexError("list length needs to be exactly %d!" % len(self._leds))
         else:
-            self._leds = led_list
-            led_byte = 0x00
-            for val, state in zip([0x10, 0x20, 0x40, 0x80], led_list):
-                if state:
-                    led_byte += val
-            self._send(RPT_LED, led_byte)
+            self._leds.set_leds(led_list)
 
     def _send(self, *bytes_to_send):
         print("sending " + str(bytes_to_send))
@@ -91,8 +152,8 @@ class WiiMote(object):
             data_str += chr(b)
         self._socket.send(data_str)
 
-
     leds = property(get_leds, set_leds)
+
     #rumble = property(get_rumble, set_rumble)
 
 
@@ -107,4 +168,3 @@ KNOWN_DEVICES = {'Nintendo RVL-CNT-01': WiiMote,
                  'Nintendo RVL-CNT-01-TR': WiiMotePlus,
                  }
 
-RPT_LED = 0x011
