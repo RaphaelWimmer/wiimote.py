@@ -183,10 +183,28 @@ class LEDs(object):
             self._state[led_no] = True if val else False
         self._com.set_led_state(self._state)
 
+class Rumbler(object):
+
+    def __init__(self, wiimote):
+        self._state = False
+        self.wiimote = wiimote
+
+    def set_rumble(self, state):
+        self._state = state
+        self.wiimote._com.set_rumble(state)
+
+    def rumble(self, length=0.5):
+        t = threading.Timer(length, self.set_rumble, [False])
+        t.start()
+        self.set_rumble(True)
+
+
 class CommunicationHandler(threading.Thread):
     
     MODE_DEFAULT = 0x30
     MODE_ACC     = 0x31
+
+    RPT_STATUS_REQ = 0x15
 
     def __init__(self, wiimote):
         threading.Thread.__init__(self)
@@ -216,6 +234,8 @@ class CommunicationHandler(threading.Thread):
     def _send(self, *bytes_to_send):
         _debug("sending " + str(bytes_to_send))
         data_str = chr(self._CMD_SET_REPORT)
+        bytes_to_send = list(bytes_to_send)
+        bytes_to_send[1] &= int(self.rumble)
         for b in bytes_to_send:
             data_str += chr(b)
         self._sendsocket.send(data_str)
@@ -256,6 +276,12 @@ class CommunicationHandler(threading.Thread):
                led_byte += val
         self._send(RPT_LED, led_byte)
 
+    def set_rumble(self, state):
+        self.rumble = state
+        # send any report to toggle rumble bit
+        self._send(self.RPT_STATUS_REQ, int(state))
+
+
 class WiiMote(object):
 
     # instance methods
@@ -267,6 +293,7 @@ class WiiMote(object):
         self._leds = LEDs(self)
         self.accelerometer = Accelerometer(self)
         self.buttons = Buttons(self)
+        self.rumbler = Rumbler(self)
         self._com.start()
        
     def _disconnect(self):
@@ -286,6 +313,9 @@ class WiiMote(object):
 
     ### LEDs ###
 
+    def rumble(self, length=0.5):
+        self.rumbler.rumble(length)
+
     def get_leds(self):
         return self._leds
 
@@ -296,6 +326,7 @@ class WiiMote(object):
             self._leds.set_leds(led_list)
 
     leds = property(get_leds, set_leds)
+
 
     #rumble = property(get_rumble, set_rumble)
 
