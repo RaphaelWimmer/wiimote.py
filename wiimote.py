@@ -55,7 +55,6 @@ def connect(btaddr, model=None):
     Establishes a connection to the Wiimote at *btaddr* and returns a Wiimote
     object. If no *model* is specified, the model is determined automatically.
     """
-    wiimote = None
     if model == None:
         model = bluetooth.lookup_name(btaddr)
     if model in KNOWN_DEVICES:
