@@ -66,6 +66,38 @@ def _debug(msg):
     if DEBUG:
         print("DEBUG: " + str(msg))
 
+class Accelerometer(object):
+   
+    SUPPORTED_REPORTS = [0x31]
+
+    def __init__(self, wiimote):
+        self._state = [0.0, 0.0, 0.0]
+        self._com = wiimote._com
+
+    def __len__(self):
+        return len(self._state)
+
+    def __repr__(self):
+        return repr(self._state)
+
+    def __getitem__(self, axis):
+        if 0 <= axis <= 2:
+            return self._state[axis]
+        else:
+            raise IndexError("list index out of range")
+    
+    def handle_report(self, report):
+        if report[0] in [0x3e, 0x3f]: # interleaved modes
+            raise NotImplementedError("Data reporting mode 0x3e/0x3f not supported")
+        x, y, z = report[3:6]
+        self._state = [x, y, z]
+        print self._state
+                    
+    def _register_callback(self, btn, func):
+        pass # todo
+
+    
+
 class Buttons(object):
     
     BUTTONS = {'A': 0x0008,
@@ -152,8 +184,8 @@ class LEDs(object):
 
 class CommunicationHandler(threading.Thread):
     
-    RPT_DEFAULT = 0x30
-    RPT_ACC     = 0x31
+    MODE_DEFAULT = 0x30
+    MODE_ACC     = 0x31
 
     def __init__(self, wiimote):
         threading.Thread.__init__(self)
@@ -161,7 +193,7 @@ class CommunicationHandler(threading.Thread):
         self.wiimote = wiimote
         self.btaddr = wiimote.btaddr
         self.model = wiimote.model
-        self.reporting_mode = self.RPT_DEFAULT
+        self.reporting_mode = self.MODE_DEFAULT
         self._controlsocket = bluetooth.BluetoothSocket(bluetooth.L2CAP)
         self._controlsocket.connect((self.btaddr, 17))
         self._datasocket = bluetooth.BluetoothSocket(bluetooth.L2CAP)
@@ -178,6 +210,7 @@ class CommunicationHandler(threading.Thread):
             self._datasocket.settimeout(1)
         except NotImplementedError:
             print "socket timeout not implemented with this bluetooth module"
+        self.set_report_mode(self.MODE_ACC)
     
     def _send(self, *bytes_to_send):
         _debug("sending " + str(bytes_to_send))
@@ -202,7 +235,8 @@ class CommunicationHandler(threading.Thread):
         self.running = False
 
     def set_report_mode(self, mode):
-        pass
+        self.reporting_mode = mode
+        self._send(0x12, 0x00, mode)
 
     def _handle(self, bytes_read):
         _debug(bytes_read)
@@ -210,7 +244,8 @@ class CommunicationHandler(threading.Thread):
         rpt_type = bytes_read[1]
         # all reports include button data
         self.wiimote.buttons.handle_report(bytes_read[1:])
-        
+        if rpt_type in Accelerometer.SUPPORTED_REPORTS:
+            self.wiimote.accelerometer.handle_report(bytes_read[1:])
 
     def set_led_state(self, led_state):
         RPT_LED = 0x11
@@ -229,6 +264,7 @@ class WiiMote(object):
         self.connected = False
         self._com = CommunicationHandler(self)
         self._leds = LEDs(self)
+        self.accelerometer = Accelerometer(self)
         self.buttons = Buttons(self)
         self._com.start()
        
