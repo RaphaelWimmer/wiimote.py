@@ -34,7 +34,7 @@
 import bluetooth
 import threading
 
-VERSION = "0.1"
+VERSION = (0,1,0)
 DEBUG = False
 
 def find():
@@ -89,9 +89,11 @@ class Accelerometer(object):
     def handle_report(self, report):
         if report[0] in [0x3e, 0x3f]: # interleaved modes
             raise NotImplementedError("Data reporting mode 0x3e/0x3f not supported")
-        x, y, z = report[3:6]
+        x_msb, y_msb, z_msb = report[3:6]
+        x = (x_msb << 2) + ((report[1] & 0b01100000) >> 5)
+        y = (y_msb << 2) + ((report[2] & 0b00100000) >> 4)
+        z = (z_msb << 2) + ((report[2] & 0b01000000) >> 5)
         self._state = [x, y, z]
-        print self._state
                     
     def _register_callback(self, btn, func):
         pass # todo
@@ -138,7 +140,6 @@ class Buttons(object):
         for btn, mask in Buttons.BUTTONS.items():
             new_state[btn] = bool(mask & btn_bytes)
         diff = self._update_state(new_state)
-        print diff
 
     def _update_state(self, new_state):
         diff = []
