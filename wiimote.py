@@ -38,6 +38,11 @@ VERSION = "0.1"
 DEBUG = False
 
 def find():
+    """
+    Uses Bluetooth SDP to find available Wiimotes. 
+    Returns a list of (bt_addr, device_name) tuples.
+    Only supported Wiimote devices are returned.
+    """
     devices = bluetooth.find_service()
     wiimotes = []
     for device in devices:
@@ -46,6 +51,7 @@ def find():
     return wiimotes
         
 def get_model(btaddr):
+    """Returns the name of a Bluetooth device identified by its MAC"""
     devices = bluetooth.find_service()
     for device in devices:
         if device["host"] == btaddr:
@@ -54,6 +60,10 @@ def get_model(btaddr):
     
 
 def connect(btaddr, model=None):
+    """
+    Establishes a connection to the Wiimote at *btaddr* and returns a Wiimote
+    object. If no *model* is specified, the model is determined automatically.
+    """
     wiimote = None
     if model == None:
         model = get_model(btaddr)
