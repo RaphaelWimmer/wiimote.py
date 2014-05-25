@@ -112,16 +112,10 @@ class Buttons(object):
         diff = []
         for btn, state in new_state.items():
             if self._state[btn] != state:
-                if state: #explicit better than implicit
-                    diff.append((btn, "pressed"))
-                else: 
-                    diff.append((btn, "released"))
+                diff.append((btn, state))
                 self._state[btn] = state
         return diff
                     
-            
-        
-
     def _register_callback(self, btn, func):
         pass # todo
 
