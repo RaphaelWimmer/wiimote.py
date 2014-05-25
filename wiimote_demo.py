@@ -19,9 +19,17 @@ print("Connecting to %s (%s)" % (name, addr))
 wm = wiimote.connect(addr, name)
 
 # Demo Time!
-patterns = [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
+#patterns = [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
+#while True:
+#    for p in patterns:
+#        wm.leds = p
+#        time.sleep(0.05)
+
 while True:
-    for p in patterns:
-        wm.leds = p
-        time.sleep(0.05)
+    if wm.buttons["A"]:
+        wm.leds[0] = True
+        print(wm.accelerometer)
+    else:
+        wm.leds[0] = False
+    time.sleep(0.05)
 
