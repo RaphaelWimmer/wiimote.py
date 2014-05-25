@@ -49,15 +49,6 @@ def find():
         if device["name"] in KNOWN_DEVICES:
             wiimotes.append((device["host"], device["name"]))
     return wiimotes
-        
-def get_model(btaddr):
-    """Returns the name of a Bluetooth device identified by its MAC"""
-    devices = bluetooth.find_service()
-    for device in devices:
-        if device["host"] == btaddr:
-            return device["name"]
-    return None
-    
 
 def connect(btaddr, model=None):
     """
@@ -66,7 +57,7 @@ def connect(btaddr, model=None):
     """
     wiimote = None
     if model == None:
-        model = get_model(btaddr)
+        model = bluetooth.lookup_name(btaddr)
     if model in KNOWN_DEVICES:
         return WiiMote(btaddr, model)
     else:
