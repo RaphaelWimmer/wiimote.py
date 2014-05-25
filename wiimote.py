@@ -1,8 +1,41 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import bluetooth
+# WiiMote wrapper in pure Python
+#
+# Copyright (c) 2014 Raphael Wimmer <raphael.wimmer@ur.de>
+#
+# using code from gtkwhiteboard, http://stepd.org/gtkwhiteboard/
+# Copyright (c) 2008 Stephane Duchesneau,
+# which was modified by Pere Negre and Pietro Pilolli to work with the new WiiMote Plus:
+# https://raw.githubusercontent.com/pnegre/python-whiteboard/master/stuff/linuxWiimoteLib.py
+#
+# LICENSE:         MIT (X11) License:
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
 
+
+import bluetooth
+import threading
+
+VERSION = "0.1"
+DEBUG = False
 
 def find():
     devices = bluetooth.find_service()
@@ -29,6 +62,10 @@ def connect(btaddr, model=None):
     else:
         raise Exception("Wiimote model '%s' unknown!" % (model))
 
+def _debug(msg):
+    if DEBUG:
+        print("DEBUG: " + str(msg))
+
 class Buttons(object):
     
     BUTTONS = {'A': 0x0008,
@@ -44,8 +81,9 @@ class Buttons(object):
                'Up': 0x0800,
     }
 
-    def __init__(self, device):
-        self._device = device
+    def __init__(self, wiimote):
+        self._wiimote = wiimote
+        self._com = wiimote._com
         self._state = {}
         for button in Buttons.BUTTONS.keys():
             self._state[button] = False
@@ -57,22 +95,41 @@ class Buttons(object):
         return repr(self._state)
 
     def __getitem__(self, btn):
-        if btn in Buttons.BUTTONS:
+        if self._state.has_key(btn):
             return self._state[btn]
         else:
             raise KeyError(str(btn))
 
-    def _update(self, report):
-        pass
+    def handle_report(self, report):
+        btn_bytes = (report[1] << 8) + report[2]
+        new_state = {}
+        for btn, mask in Buttons.BUTTONS.items():
+            new_state[btn] = bool(mask & btn_bytes)
+        diff = self._update_state(new_state)
+        print diff
+
+    def _update_state(self, new_state):
+        diff = []
+        for btn, state in new_state.items():
+            if self._state[btn] != state:
+                if state: #explicit better than implicit
+                    diff.append((btn, "pressed"))
+                else: 
+                    diff.append((btn, "released"))
+                self._state[btn] = state
+        return diff
+                    
+            
+        
 
     def _register_callback(self, btn, func):
         pass # todo
 
 class LEDs(object):
 
-    def __init__(self, com_mgr):
+    def __init__(self, wiimote):
         self._state = [False, False, False, False]
-        self._com = com_mgr
+        self._com = wiimote._com
 
     def __len__(self):
         return len(self._state)
@@ -97,31 +154,29 @@ class LEDs(object):
     def set_leds(self, led_list):
         for led_no, val in enumerate(led_list):
             self._state[led_no] = True if val else False
-        self._com.write_led_state(self._state)
+        self._com.set_led_state(self._state)
 
-    def send_led_state(self):
-        RPT_LED = 0x11
-        led_byte = 0x00
-        for val, state in zip([0x10, 0x20, 0x40, 0x80], self._state):
-            if state:
-               led_byte += val
-        self._device._send(RPT_LED, led_byte)
+class CommunicationHandler(threading.Thread):
+    
+    RPT_DEFAULT = 0x30
+    RPT_ACC     = 0x31
 
-class CommunicationHandler(object):
-
-    def __init__(self, btaddr, model):
+    def __init__(self, wiimote):
+        threading.Thread.__init__(self)
         self.rumble = False # rumble always 
-        self.btaddr = btaddr
-        self.model = model
+        self.wiimote = wiimote
+        self.btaddr = wiimote.btaddr
+        self.model = wiimote.model
+        self.reporting_mode = self.RPT_DEFAULT
         self._controlsocket = bluetooth.BluetoothSocket(bluetooth.L2CAP)
         self._controlsocket.connect((self.btaddr, 17))
         self._datasocket = bluetooth.BluetoothSocket(bluetooth.L2CAP)
         self._datasocket.connect((self.btaddr, 19))
         if self.model == 'Nintendo RVL-CNT-01':
-            self._socket = self._controlsocket
+            self._sendsocket = self._controlsocket
             self._CMD_SET_REPORT = 0x52
         elif self.model == 'Nintendo RVL-CNT-01-TR':
-            self._socket = self._datasocket
+            self._sendsocket = self._datasocket
             self._CMD_SET_REPORT = 0xa2
         else:
             raise Exception("unknown model")
@@ -131,13 +186,39 @@ class CommunicationHandler(object):
             print "socket timeout not implemented with this bluetooth module"
     
     def _send(self, *bytes_to_send):
-        print("sending " + str(bytes_to_send))
+        _debug("sending " + str(bytes_to_send))
         data_str = chr(self._CMD_SET_REPORT)
         for b in bytes_to_send:
             data_str += chr(b)
-        self._socket.send(data_str)
+        self._sendsocket.send(data_str)
 
-    def write_led_state(self, led_state):
+    def run(self):
+        self.running = True
+        while self.running:
+            try:
+                data = map(ord,self._datasocket.recv(32))
+            except bluetooth.BluetoothError:
+                continue
+            self._handle(data)
+        self._dispose()
+
+    def _dispose(self):
+        self._datasocket.close()
+        self._controlsocket.close()
+        self.running = False
+
+    def set_report_mode(self, mode):
+        pass
+
+    def _handle(self, bytes_read):
+        _debug(bytes_read)
+        #assert(bytes_read[0] == self._CMD_SET_REPORT + 1)
+        rpt_type = bytes_read[1]
+        # all reports include button data
+        self.wiimote.buttons.handle_report(bytes_read[1:])
+        
+
+    def set_led_state(self, led_state):
         RPT_LED = 0x11
         led_byte = 0x00
         for val, state in zip([0x10, 0x20, 0x40, 0x80], led_state):
@@ -152,13 +233,11 @@ class WiiMote(object):
         self.btaddr = btaddr
         self.model = model
         self.connected = False
-        self.connect()
-        self._leds = LEDs(self._com)
+        self._com = CommunicationHandler(self)
+        self._leds = LEDs(self)
+        self.buttons = Buttons(self)
+        self._com.start()
        
-    def connect(self):
-        self._com = CommunicationHandler(self.btaddr, self.model)
-        #self.connected = self._com.connected()
-    
     def _disconnect(self):
         pass
 
