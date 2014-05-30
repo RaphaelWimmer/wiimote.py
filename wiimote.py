@@ -208,6 +208,7 @@ class CommunicationHandler(threading.Thread):
 
     def __init__(self, wiimote):
         threading.Thread.__init__(self)
+        self.daemon = True
         self.rumble = False # rumble always 
         self.wiimote = wiimote
         self.btaddr = wiimote.btaddr
