@@ -84,6 +84,11 @@ def _flatten(list_of_lists):
             out += _flatten(item)
     return out
 
+def _add_padding(byte_list, intended_length, padding_byte=0x00):
+    for i in range(intended_length - len(byte_list)):
+        byte_list.append(padding_byte)
+    return byte_list
+
 
 def _debug(msg):
     if DEBUG:
@@ -200,11 +205,16 @@ class LEDs(object):
             self.set_leds(new_led_state)
         else:
             raise IndexError("list index out of range")
-
+    
     def set_leds(self, led_list):
         for led_no, val in enumerate(led_list):
             self._state[led_no] = True if val else False
-        self._com.set_led_state(self._state)
+        RPT_LED = 0x11
+        led_byte = 0x00
+        for val, state in zip([0x10, 0x20, 0x40, 0x80], led_state):
+            if state:
+               led_byte += val
+        self._com._send(RPT_LED, led_byte)
 
 class Rumbler(object):
 
@@ -257,7 +267,13 @@ class Memory(object):
 
 
     def write(self, address, data, eeprom=False):
-        raise NotImplementedError("not implemented yet")
+        # to do: send larger blocks in multiple 16-byte requests instead of failing
+        address_bytes = _val_to_byte_list(address, 3, big_endian=True)
+        bytes_to_send = _add_padding(_flatten(data), 16)
+        amount = len(bytes_to_send)
+        amount_byte = _val_to_byte_list(amount, 1, big_endian=True)
+        control_or_eeprom = 0x00 if eeprom else 0x02
+        self._com._send(Memory.RPT_WRITE, control_or_eeprom, address_bytes, amount_byte, bytes_to_send) 
 
     def read(self, address, amount, eeprom=False):
         if self._request_in_progress:
@@ -327,7 +343,7 @@ class CommunicationHandler(threading.Thread):
         _debug("sending " + str(bytes_to_send))
         data_str = chr(self._CMD_SET_REPORT)
         bytes_to_send = _flatten(bytes_to_send)
-        bytes_to_send[1] &= int(self.rumble)
+        bytes_to_send[1] |= int(self.rumble)
         for b in bytes_to_send:
             data_str += chr(b)
         self._sendsocket.send(data_str)
@@ -339,7 +355,10 @@ class CommunicationHandler(threading.Thread):
                 data = map(ord,self._datasocket.recv(32))
             except bluetooth.BluetoothError:
                 continue
-            self._handle(data)
+            if len(data) < 2: # disconnect!
+                self.running = False
+            else:
+                self._handle(data)
         self._dispose()
 
     def _dispose(self):
@@ -361,14 +380,6 @@ class CommunicationHandler(threading.Thread):
             self.wiimote.accelerometer.handle_report(bytes_read[1:])
         if rpt_type in Memory.SUPPORTED_REPORTS:
             self.wiimote.memory.handle_report(bytes_read[1:])
-
-    def set_led_state(self, led_state):
-        RPT_LED = 0x11
-        led_byte = 0x00
-        for val, state in zip([0x10, 0x20, 0x40, 0x80], led_state):
-            if state:
-               led_byte += val
-        self._send(RPT_LED, led_byte)
 
     def set_rumble(self, state):
         self.rumble = state
