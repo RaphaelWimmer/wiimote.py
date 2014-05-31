@@ -33,6 +33,7 @@
 
 import bluetooth
 import threading
+import time
 
 VERSION = (0,1,0)
 DEBUG = False
@@ -62,13 +63,35 @@ def connect(btaddr, model=None):
     else:
         raise Exception("Wiimote model '%s' unknown!" % (model))
 
+def _val_to_byte_list(number, num_bytes, big_endian=True):
+    if number > (2**(8*num_bytes))-1:
+        raise ValueError("Unsigned integer %d does not fit into %d bytes!" % (number, num_bytes))
+    byte_list = []
+    for b in range(num_bytes):
+        val = (number >> (8*b)) & 0xff
+        if big_endian:
+            byte_list.insert(0, val)
+        else:
+            byte_list.append(val)
+    return byte_list
+
+def _flatten(list_of_lists):
+    out = []
+    for item in list_of_lists:
+        if type(item) is int:
+            out.append(item)
+        elif type(item) is list:
+            out += _flatten(item)
+    return out
+
+
 def _debug(msg):
     if DEBUG:
         print("DEBUG: " + str(msg))
 
 class Accelerometer(object):
    
-    SUPPORTED_REPORTS = [0x31]
+    SUPPORTED_REPORTS = [0x31, 0x33]
 
     def __init__(self, wiimote):
         self._state = [0.0, 0.0, 0.0]
@@ -198,6 +221,74 @@ class Rumbler(object):
         t.start()
         self.set_rumble(True)
 
+class IRCam(object):
+
+    MODE_BASIC = 1
+    MODE_EXTENDED = 3
+    MODE_FULL = 5
+    
+    SUPPORTED_REPORTS = [0x33, 0x36,0x37,0x3e,0x3f]
+
+    def __init__(self, wiimote):
+        self.wiimote = wiimote
+        self._state = []
+        self._mode = IRCam.MODE_BASIC
+
+    def get_state(self):
+        return self._state
+
+    def set_mode(self):
+        pass
+
+
+class Memory(object):
+
+    RPT_READ = 0x17
+    RPT_WRITE = 0x16
+    
+    SUPPORTED_REPORTS = [0x21]
+
+    def __init__(self, wiimote):
+        self.wiimote = wiimote
+        self._com = wiimote._com
+        self._request_in_progress = False
+        self._bytes_requested = 0
+        self._reply_buffer = []
+
+
+    def write(self, address, data, eeprom=False):
+        raise NotImplementedError("not implemented yet")
+
+    def read(self, address, amount, eeprom=False):
+        if self._request_in_progress:
+            raise RuntimeError("Memory read already in progress.")
+        self._bytes_remaining = amount
+        address_bytes = _val_to_byte_list(address, 3, big_endian=True)
+        amount_bytes = _val_to_byte_list(amount, 2, big_endian=True)
+        control_or_eeprom = 0x00 if eeprom else 0x02
+        self._request_in_progress = True
+        self._reply_buffer = []
+        self._com._send(Memory.RPT_READ, control_or_eeprom, address_bytes, amount_bytes) 
+        # now wait until handle() has filled our reply buffer
+        while self._request_in_progress:
+            time.sleep(0.01)
+        return self._reply_buffer
+
+    def handle_report(self, report):
+        if report[0] not in Memory.SUPPORTED_REPORTS: # interleaved modes
+            raise NotImplementedError("can not handle this report")
+        error = (report[3] & 0x0f) 
+        if error != 0:
+            raise RuntimeError("Error condition %x received during memory read!" % error)
+        num_bytes_received = ((report[3] >> 4) & 0x0f) + 1
+        data_bytes = report[6:][:num_bytes_received]
+        self._reply_buffer += data_bytes
+        self._bytes_remaining -= num_bytes_received
+        if self._bytes_remaining < 0:
+            raise RuntimeError("Memory read received more data than requested!")
+        elif self._bytes_remaining == 0:
+            self._request_in_progress = False
+
 
 class CommunicationHandler(threading.Thread):
     
@@ -235,7 +326,7 @@ class CommunicationHandler(threading.Thread):
     def _send(self, *bytes_to_send):
         _debug("sending " + str(bytes_to_send))
         data_str = chr(self._CMD_SET_REPORT)
-        bytes_to_send = list(bytes_to_send)
+        bytes_to_send = _flatten(bytes_to_send)
         bytes_to_send[1] &= int(self.rumble)
         for b in bytes_to_send:
             data_str += chr(b)
@@ -268,6 +359,8 @@ class CommunicationHandler(threading.Thread):
         self.wiimote.buttons.handle_report(bytes_read[1:])
         if rpt_type in Accelerometer.SUPPORTED_REPORTS:
             self.wiimote.accelerometer.handle_report(bytes_read[1:])
+        if rpt_type in Memory.SUPPORTED_REPORTS:
+            self.wiimote.memory.handle_report(bytes_read[1:])
 
     def set_led_state(self, led_state):
         RPT_LED = 0x11
@@ -295,6 +388,7 @@ class WiiMote(object):
         self.accelerometer = Accelerometer(self)
         self.buttons = Buttons(self)
         self.rumbler = Rumbler(self)
+        self.memory = Memory(self)
         self._com.start()
        
     def _disconnect(self):
