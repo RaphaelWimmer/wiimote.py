@@ -30,6 +30,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+# based on the awesome documentation at http://wiibrew.org/wiki/Wiimote
 
 import bluetooth
 import threading
@@ -37,6 +38,7 @@ import time
 
 VERSION = (0,1,0)
 DEBUG = False
+KNOWN_DEVICES = ['Nintendo RVL-CNT-01', 'Nintendo RVL-CNT-01-TR']
 
 def find():
     """
@@ -436,5 +438,4 @@ class WiiMote(object):
 
     #rumble = property(get_rumble, set_rumble)
 
-KNOWN_DEVICES = ['Nintendo RVL-CNT-01', 'Nintendo RVL-CNT-01-TR']
 
