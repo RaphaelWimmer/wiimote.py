@@ -213,7 +213,7 @@ class LEDs(object):
             self._state[led_no] = True if val else False
         RPT_LED = 0x11
         led_byte = 0x00
-        for val, state in zip([0x10, 0x20, 0x40, 0x80], led_state):
+        for val, state in zip([0x10, 0x20, 0x40, 0x80], self._state):
             if state:
                led_byte += val
         self._com._send(RPT_LED, led_byte)
