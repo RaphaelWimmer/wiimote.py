@@ -79,6 +79,8 @@ def _val_to_byte_list(number, num_bytes, big_endian=True):
 
 def _flatten(list_of_lists):
     out = []
+    if type(list_of_lists) is int:
+        return [list_of_lists]
     for item in list_of_lists:
         if type(item) is int:
             out.append(item)
@@ -238,20 +240,60 @@ class IRCam(object):
     MODE_BASIC = 1
     MODE_EXTENDED = 3
     MODE_FULL = 5
+
+    # adapted from WiiBrew list, higher index means higher sensitivty
+    SENSITIVITY_BLOCKS = [
+        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0x64, 0x00, 0xfe], [0xfd, 0x05]),
+        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0x96, 0x00, 0xb4], [0xb3, 0x04]),
+        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0xaa, 0x00, 0x64], [0x63, 0x03]),
+        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0xc8, 0x00, 0x36], [0x35, 0x03]),
+        ([0x07, 0x00, 0x00, 0x71, 0x01, 0x00, 0x72, 0x00, 0x20], [0x1f, 0x03]),
+        ([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x0c], [0x00, 0x00]),
+    ]
     
     SUPPORTED_REPORTS = [0x33, 0x36,0x37,0x3e,0x3f]
 
     def __init__(self, wiimote):
         self.wiimote = wiimote
-        self._state = []
-        self._mode = IRCam.MODE_BASIC
+        self._com = wiimote._com
+        self._state = [None,None,None,None]
+        self._mode = self.MODE_EXTENDED
+        self._sensitivity = 3
+        self.set_mode_sensitivity(self._mode, self._sensitivity)
+
+    def set_mode_sensitivity(self, mode, sensitivity):
+        if sensitivity > len(self.SENSITIVITY_BLOCKS) - 1 or \
+           (mode not in [self.MODE_BASIC, self.MODE_EXTENDED, self.MODE_FULL]):
+            return
+        self._com.set_report_mode(0x33) #todo: adjust for other modes!!
+        self._com._send(0x13, 0x04)
+        self._com._send(0x1a, 0x04)
+        self.wiimote.memory.write(0xb00030, 0x08, eeprom=False)
+        self.wiimote.memory.write(0xb00000, self.SENSITIVITY_BLOCKS[mode][0], eeprom=False)
+        self.wiimote.memory.write(0xb0001a, self.SENSITIVITY_BLOCKS[mode][1], eeprom=False)
+        self.wiimote.memory.write(0xb00033, mode, eeprom=False)
+        #self.wiimote.memory.write(0xb00030, 0x08, eeprom=False)
+
+
+    def disable(self):
+        pass
 
     def get_state(self):
         return self._state
 
-    def set_mode(self):
+    def set_sensitivity(self):
         pass
 
+    def handle_report(self, report):
+        assert(report[0] in self.SUPPORTED_REPORTS)
+        # only extended mode for now!
+        ir_data = report[6:]
+        for ir_obj in range(4):
+            data = ir_data[ir_obj*3:(ir_obj+1)*3]
+            x = data[0] + ((data[2] & 0b00110000) << 4)
+            y = data[1] + ((data[2] & 0b11000000) << 2)
+            size = data[2] & 0b00001111
+            self._state[ir_obj] = {'x': x, 'y': y, 'size': size}
 
 class Memory(object):
 
@@ -271,10 +313,11 @@ class Memory(object):
     def write(self, address, data, eeprom=False):
         # to do: send larger blocks in multiple 16-byte requests instead of failing
         address_bytes = _val_to_byte_list(address, 3, big_endian=True)
-        bytes_to_send = _add_padding(_flatten(data), 16)
+        bytes_to_send = _flatten(data)
         amount = len(bytes_to_send)
         amount_byte = _val_to_byte_list(amount, 1, big_endian=True)
-        control_or_eeprom = 0x00 if eeprom else 0x02
+        bytes_to_send = _add_padding(bytes_to_send, 16)
+        control_or_eeprom = 0x00 if eeprom else 0x04
         self._com._send(Memory.RPT_WRITE, control_or_eeprom, address_bytes, amount_byte, bytes_to_send) 
 
     def read(self, address, amount, eeprom=False):
@@ -312,6 +355,7 @@ class CommunicationHandler(threading.Thread):
     
     MODE_DEFAULT = 0x30
     MODE_ACC     = 0x31
+    MODE_ACC_IR  = 0x33
 
     RPT_STATUS_REQ = 0x15
 
@@ -339,7 +383,7 @@ class CommunicationHandler(threading.Thread):
             self._datasocket.settimeout(1)
         except NotImplementedError:
             print "socket timeout not implemented with this bluetooth module"
-        self.set_report_mode(self.MODE_ACC)
+        self.set_report_mode(self.MODE_ACC_IR)
     
     def _send(self, *bytes_to_send):
         _debug("sending " + str(bytes_to_send))
@@ -373,7 +417,7 @@ class CommunicationHandler(threading.Thread):
         self._send(0x12, 0x00, mode)
 
     def _handle(self, bytes_read):
-        _debug(bytes_read)
+        #_debug(bytes_read)
         #assert(bytes_read[0] == self._CMD_SET_REPORT + 1)
         rpt_type = bytes_read[1]
         # all reports include button data
@@ -382,6 +426,8 @@ class CommunicationHandler(threading.Thread):
             self.wiimote.accelerometer.handle_report(bytes_read[1:])
         if rpt_type in Memory.SUPPORTED_REPORTS:
             self.wiimote.memory.handle_report(bytes_read[1:])
+        if rpt_type in IRCam.SUPPORTED_REPORTS:
+            self.wiimote.ir.handle_report(bytes_read[1:])
 
     def set_rumble(self, state):
         self.rumble = state
@@ -402,6 +448,7 @@ class WiiMote(object):
         self.buttons = Buttons(self)
         self.rumbler = Rumbler(self)
         self.memory = Memory(self)
+        self.ir = IRCam(self)
         self._com.start()
        
     def _disconnect(self):
