@@ -104,7 +104,9 @@ class Accelerometer(object):
 
     def __init__(self, wiimote):
         self._state = [0.0, 0.0, 0.0]
+        self._wiimote = wiimote
         self._com = wiimote._com
+        self._callbacks = []
 
     def __len__(self):
         return len(self._state)
@@ -118,6 +120,13 @@ class Accelerometer(object):
         else:
             raise IndexError("list index out of range")
     
+    def register_callback(self, func):
+        self._callbacks.append(func)
+
+    def _notify_callbacks(self, diff):
+        for callback in self._callbacks:
+            callback(diff)
+    
     def handle_report(self, report):
         if report[0] in [0x3e, 0x3f]: # interleaved modes
             raise NotImplementedError("Data reporting mode 0x3e/0x3f not supported")
@@ -127,9 +136,6 @@ class Accelerometer(object):
         z = (z_msb << 2) + ((report[2] & 0b01000000) >> 5)
         self._state = [x, y, z]
                     
-    def _register_callback(self, btn, func):
-        pass # todo
-
     
 
 class Buttons(object):
@@ -153,6 +159,7 @@ class Buttons(object):
         self._state = {}
         for button in Buttons.BUTTONS.keys():
             self._state[button] = False
+        self._callbacks = []
 
     def __len__(self):
         return len(self._state)
@@ -166,12 +173,20 @@ class Buttons(object):
         else:
             raise KeyError(str(btn))
 
+    def register_callback(self, func):
+        self._callbacks.append(func)
+
+    def _notify_callbacks(self, diff):
+        for callback in self._callbacks:
+            callback(diff)
+
     def handle_report(self, report):
         btn_bytes = (report[1] << 8) + report[2]
         new_state = {}
         for btn, mask in Buttons.BUTTONS.items():
             new_state[btn] = bool(mask & btn_bytes)
         diff = self._update_state(new_state)
+        self._notify_callbacks(diff)
 
     def _update_state(self, new_state):
         diff = []
@@ -181,8 +196,6 @@ class Buttons(object):
                 self._state[btn] = state
         return diff
                     
-    def _register_callback(self, btn, func):
-        pass # todo
 
 class LEDs(object):
 
@@ -257,6 +270,7 @@ class IRCam(object):
         self.wiimote = wiimote
         self._com = wiimote._com
         self._state = [None,None,None,None]
+        self._callbacks = []
         self._mode = self.MODE_EXTENDED
         self._sensitivity = 3
         self.set_mode_sensitivity(self._mode, self._sensitivity)
@@ -264,7 +278,7 @@ class IRCam(object):
     def set_mode_sensitivity(self, mode, sensitivity):
         if sensitivity > len(self.SENSITIVITY_BLOCKS) - 1 or \
            (mode not in [self.MODE_BASIC, self.MODE_EXTENDED, self.MODE_FULL]):
-            return
+            raise TypeError("wrong mode or sensitivity level given")
         self._com.set_report_mode(0x33) #todo: adjust for other modes!!
         self._com._send(0x13, 0x04)
         self._com._send(0x1a, 0x04)
@@ -272,8 +286,6 @@ class IRCam(object):
         self.wiimote.memory.write(0xb00000, self.SENSITIVITY_BLOCKS[mode][0], eeprom=False)
         self.wiimote.memory.write(0xb0001a, self.SENSITIVITY_BLOCKS[mode][1], eeprom=False)
         self.wiimote.memory.write(0xb00033, mode, eeprom=False)
-        #self.wiimote.memory.write(0xb00030, 0x08, eeprom=False)
-
 
     def disable(self):
         pass
@@ -281,8 +293,15 @@ class IRCam(object):
     def get_state(self):
         return self._state
 
-    def set_sensitivity(self):
-        pass
+    def set_sensitivity(self, sensitivity):
+        self.set_mode_sensitivity(self._mode, sensitivity) 
+
+    def register_callback(self, func):
+        self._callbacks.append(func)
+
+    def _notify_callbacks(self):
+        for callback in self._callbacks:
+            callback(self._state)
 
     def handle_report(self, report):
         assert(report[0] in self.SUPPORTED_REPORTS)
@@ -294,6 +313,7 @@ class IRCam(object):
             y = data[1] + ((data[2] & 0b11000000) << 2)
             size = data[2] & 0b00001111
             self._state[ir_obj] = {'x': x, 'y': y, 'size': size}
+        self._notify_callbacks()
 
 class Memory(object):
 
@@ -465,8 +485,6 @@ class WiiMote(object):
 
     def _reset(self):
         pass
-
-    ### LEDs ###
 
     def rumble(self, length=0.5):
         self.rumbler.rumble(length)
