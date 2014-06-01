@@ -27,7 +27,7 @@ wm = wiimote.connect(addr, name)
 
 while True:
     if wm.buttons["A"]:
-        #wm.leds[0] = True
+        wm.leds[0] = True
         wm.rumble(0.1)
         print(wm.accelerometer)
     else:
