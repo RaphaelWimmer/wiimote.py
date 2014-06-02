@@ -123,9 +123,9 @@ class Accelerometer(object):
     def register_callback(self, func):
         self._callbacks.append(func)
 
-    def _notify_callbacks(self, diff):
+    def _notify_callbacks(self):
         for callback in self._callbacks:
-            callback(diff)
+            callback(self._state)
     
     def handle_report(self, report):
         if report[0] in [0x3e, 0x3f]: # interleaved modes
@@ -135,6 +135,7 @@ class Accelerometer(object):
         y = (y_msb << 2) + ((report[2] & 0b00100000) >> 4)
         z = (z_msb << 2) + ((report[2] & 0b01000000) >> 5)
         self._state = [x, y, z]
+        self._notify_callbacks()
                     
     
 
@@ -269,11 +270,23 @@ class IRCam(object):
     def __init__(self, wiimote):
         self.wiimote = wiimote
         self._com = wiimote._com
-        self._state = [None,None,None,None]
+        self._state = []
         self._callbacks = []
         self._mode = self.MODE_EXTENDED
         self._sensitivity = 3
         self.set_mode_sensitivity(self._mode, self._sensitivity)
+
+    def __len__(self):
+        return len(self._state)
+
+    def __repr__(self):
+        return repr(self._state)
+
+    def __getitem__(self, slot):
+        if 0 <= axis <= 3:
+            return self._state[slot]
+        else:
+            raise IndexError("list index out of range")
 
     def set_mode_sensitivity(self, mode, sensitivity):
         if sensitivity > len(self.SENSITIVITY_BLOCKS) - 1 or \
@@ -312,7 +325,8 @@ class IRCam(object):
             x = data[0] + ((data[2] & 0b00110000) << 4)
             y = data[1] + ((data[2] & 0b11000000) << 2)
             size = data[2] & 0b00001111
-            self._state[ir_obj] = {'x': x, 'y': y, 'size': size}
+            if size != 0:
+                self._state.append({'id': ir_obj, 'x': x, 'y': y, 'size': size})
         self._notify_callbacks()
 
 class Memory(object):
