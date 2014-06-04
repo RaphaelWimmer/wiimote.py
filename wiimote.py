@@ -118,10 +118,14 @@ class Accelerometer(object):
         if 0 <= axis <= 2:
             return self._state[axis]
         else:
-            raise IndexError("list index out of range")
+            raise IndexError("list index %d out of range" % (axis))
     
     def register_callback(self, func):
         self._callbacks.append(func)
+
+    def unregister_callback(self, func):
+        if func in self._callbacks:
+            self._callbacks.remove(func)
 
     def _notify_callbacks(self):
         for callback in self._callbacks:
@@ -176,6 +180,10 @@ class Buttons(object):
 
     def register_callback(self, func):
         self._callbacks.append(func)
+    
+    def unregister_callback(self, func):
+        if func in self._callbacks:
+            self._callbacks.remove(func)
 
     def _notify_callbacks(self, diff):
         for callback in self._callbacks:
@@ -283,7 +291,7 @@ class IRCam(object):
         return repr(self._state)
 
     def __getitem__(self, slot):
-        if 0 <= axis <= 3:
+        if 0 <= slot < len(self._state):
             return self._state[slot]
         else:
             raise IndexError("list index out of range")
@@ -311,6 +319,10 @@ class IRCam(object):
 
     def register_callback(self, func):
         self._callbacks.append(func)
+    
+    def unregister_callback(self, func):
+        if func in self._callbacks:
+            self._callbacks.remove(func)
 
     def _notify_callbacks(self):
         for callback in self._callbacks:
@@ -484,9 +496,10 @@ class WiiMote(object):
         self.memory = Memory(self)
         self.ir = IRCam(self)
         self._com.start()
+        self.leds[0] = True
        
-    def _disconnect(self):
-        pass
+    def disconnect(self):
+        self._com.running = False
 
     def _get_capabilities(self):
         return None
