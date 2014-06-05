@@ -13,7 +13,12 @@ import wiimote
 
 
 class BufferNode(CtrlNode):
-    """Buffer the last n samples provided on input."""
+    """
+    Buffers the last n samples provided on input and provides them as a list of
+    length n on output.
+    A spinbox widget allows for setting the size of the buffer. 
+    Default size is 32 samples.
+    """
     nodeName = "Buffer"
     uiTemplate = [
         ('size',  'spin', {'value': 32.0, 'step': 1.0, 'range': [0.0, 128.0]}),
@@ -37,7 +42,16 @@ class BufferNode(CtrlNode):
 fclib.registerNodeType(BufferNode, [('Data',)])
         
 class WiimoteNode(Node):
-    """Output sensor data from a Wiimote."""
+    """
+    Outputs sensor data from a Wiimote.
+    
+    Supported sensors: accelerometer (3 axis)
+    Text input box allows for setting a Bluetooth MAC address. 
+    Pressing the "connect" button tries connecting to the Wiimote.
+    Update rate can be changed via a spinbox widget. Setting it to "0" 
+    activates callbacks everytime a new sensor value arrives (which is
+    quite often -> performance hit)
+    """
     nodeName = "Wiimote"
     
     def __init__(self, name):
@@ -59,8 +73,8 @@ class WiimoteNode(Node):
         self.layout.addWidget(label2)
         self.update_rate_input = QtGui.QSpinBox()
         self.update_rate_input.setMinimum(0)
-        self.update_rate_input.setMaximum(120)
-        self.update_rate_input.setValue(60)
+        self.update_rate_input.setMaximum(60)
+        self.update_rate_input.setValue(20)
         self.update_rate_input.valueChanged.connect(self.set_update_rate)
         self.layout.addWidget(self.update_rate_input)
 
@@ -68,8 +82,7 @@ class WiimoteNode(Node):
         self.layout.addWidget(self.connect_button)
         self.ui.setLayout(self.layout)
         self.connect_button.clicked.connect(self.connect_wiimote)
-        #self.text.focusOutEvent = self.focusOutEvent
-        self.btaddr="b8:ae:6e:18:5d:ab" # for ease of use
+        self.btaddr = "b8:ae:6e:18:5d:ab" # for ease of use
         self.text.setText(self.btaddr)
         self.update_timer = QtCore.QTimer()
         self.update_timer.timeout.connect(self.update_all_sensors)
@@ -116,7 +129,6 @@ class WiimoteNode(Node):
             self.update_timer.start(1000.0/rate)
 
     def process(self, **kwdargs):
-        # CtrlNode has created self.ctrls, which is a dict containing {ctrlName: widget}
         x,y,z = self._acc_vals
         return {'accelX': np.array([x]), 'accelY': np.array([y]), 'accelZ': np.array([z])}
         
