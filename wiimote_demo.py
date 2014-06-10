@@ -28,7 +28,7 @@ for i in range(5):
 
 def print_ir(ir_data):
     for ir_obj in ir_data:
-        print "%4d %4d %2d" % (ir_obj["x"],ir_obj["y"],ir_obj["size"]), 
+        print "%4d %4d %2d     " % (ir_obj["x"],ir_obj["y"],ir_obj["size"]),
     print
 
 wm.ir.register_callback(print_ir)
