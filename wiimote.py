@@ -332,6 +332,7 @@ class IRCam(object):
         assert(report[0] in self.SUPPORTED_REPORTS)
         # only extended mode for now!
         ir_data = report[6:]
+        self._state = []
         for ir_obj in range(4):
             data = ir_data[ir_obj*3:(ir_obj+1)*3]
             x = data[0] + ((data[2] & 0b00110000) << 4)
