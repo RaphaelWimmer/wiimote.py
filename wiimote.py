@@ -96,7 +96,7 @@ def _add_padding(byte_list, intended_length, padding_byte=0x00):
 
 def _debug(msg):
     if DEBUG:
-        print("DEBUG: " + str(msg))
+        print(("DEBUG: " + str(msg)))
 
 class Accelerometer(object):
    
@@ -162,7 +162,7 @@ class Buttons(object):
         self._wiimote = wiimote
         self._com = wiimote._com
         self._state = {}
-        for button in Buttons.BUTTONS.keys():
+        for button in list(Buttons.BUTTONS.keys()):
             self._state[button] = False
         self._callbacks = []
 
@@ -173,7 +173,7 @@ class Buttons(object):
         return repr(self._state)
 
     def __getitem__(self, btn):
-        if self._state.has_key(btn):
+        if btn in self._state:
             return self._state[btn]
         else:
             raise KeyError(str(btn))
@@ -192,14 +192,14 @@ class Buttons(object):
     def handle_report(self, report):
         btn_bytes = (report[1] << 8) + report[2]
         new_state = {}
-        for btn, mask in Buttons.BUTTONS.items():
+        for btn, mask in list(Buttons.BUTTONS.items()):
             new_state[btn] = bool(mask & btn_bytes)
         diff = self._update_state(new_state)
         self._notify_callbacks(diff)
 
     def _update_state(self, new_state):
         diff = []
-        for btn, state in new_state.items():
+        for btn, state in list(new_state.items()):
             if self._state[btn] != state:
                 diff.append((btn, state))
                 self._state[btn] = state
@@ -429,7 +429,7 @@ class CommunicationHandler(threading.Thread):
         try:
             self._datasocket.settimeout(1)
         except NotImplementedError:
-            print "socket timeout not implemented with this bluetooth module"
+            print("socket timeout not implemented with this bluetooth module")
         self.set_report_mode(self.MODE_ACC_IR)
     
     def _send(self, *bytes_to_send):
@@ -445,7 +445,7 @@ class CommunicationHandler(threading.Thread):
         self.running = True
         while self.running:
             try:
-                data = map(ord,self._datasocket.recv(32))
+                data = list(map(ord,self._datasocket.recv(32)))
             except bluetooth.BluetoothError:
                 continue
             if len(data) < 2: # disconnect!

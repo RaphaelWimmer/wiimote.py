@@ -1,10 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import wiimote
 import time
 import sys
     
-raw_input("Press the 'sync' button on the back of your Wiimote Plus " +
+input("Press the 'sync' button on the back of your Wiimote Plus " +
           "or buttons (1) and (2) on your classic Wiimote.\n" +
           "Press <return> once the Wiimote's LEDs start blinking.")
 
@@ -15,7 +15,7 @@ elif len(sys.argv) == 2:
     name = None
 elif len(sys.argv) == 3:
     addr, name = sys.argv[1:3]
-print("Connecting to %s (%s)" % (name, addr))
+print(("Connecting to %s (%s)" % (name, addr)))
 wm = wiimote.connect(addr, name)
 
 # Demo Time!
@@ -30,8 +30,9 @@ def print_ir(ir_data):
     if len(ir_data) == 0:
         return
     for ir_obj in ir_data:
-        print "%4d %4d %2d     " % (ir_obj["x"],ir_obj["y"],ir_obj["size"]),
-    print
+        #print("%4d %4d %2d     " % (ir_obj["x"],ir_obj["y"],ir_obj["size"]), end=' ')
+        print("%4d %4d %2d     " % (ir_obj["x"],ir_obj["y"],ir_obj["size"]))
+    print()
 
 wm.ir.register_callback(print_ir)
 
@@ -39,7 +40,7 @@ while True:
     if wm.buttons["A"]:
         wm.leds[1] = True
         wm.rumble(0.1)
-        print(wm.accelerometer)
+        print((wm.accelerometer))
     else:
         wm.leds[1] = False
         pass
