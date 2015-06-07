@@ -154,8 +154,6 @@ if __name__ == '__main__':
 
     ## Create an empty flowchart with a single input and output
     fc = Flowchart(terminals={
-        'dataIn': {'io': 'in'},
-        'dataOut': {'io': 'out'}    
     })
     w = fc.widget()
 

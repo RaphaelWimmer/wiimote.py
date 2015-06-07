@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # coding: utf-8
 
-# WiiMote wrapper in pure Python
+# WiiMote wrapper in pure Python 3
 #
 # Copyright (c) 2014 Raphael Wimmer <raphael.wimmer@ur.de>
 #
@@ -36,13 +36,14 @@ import bluetooth
 import threading
 import time
 
-VERSION = (0,3)
+VERSION = (0, 3)
 DEBUG = False
 KNOWN_DEVICES = ['Nintendo RVL-CNT-01', 'Nintendo RVL-CNT-01-TR']
 
+
 def find():
     """
-    Uses Bluetooth SDP to find available Wiimotes. 
+    Uses Bluetooth SDP to find available Wiimotes.
     Returns a list of (bt_addr, device_name) tuples.
     Only supported Wiimote devices are returned.
     """
@@ -53,19 +54,26 @@ def find():
             wiimotes.append((device["host"], device["name"]))
     return wiimotes
 
+
 def connect(btaddr, model=None):
     """
     Establishes a connection to the Wiimote at *btaddr* and returns a Wiimote
     object. If no *model* is specified, the model is determined automatically.
     """
-    if model == None:
+    if model is None:
         model = bluetooth.lookup_name(btaddr)
     if model in KNOWN_DEVICES:
         return WiiMote(btaddr, model)
     else:
         raise Exception("Wiimote model '%s' unknown!" % (model))
 
+
 def _val_to_byte_list(number, num_bytes, big_endian=True):
+    """
+    Converts an integer into a big/little-endian multi-byte representation.
+    Similar to int.to_bytes() in the standard lib but returns a list of integers
+    between 0 and 255 (which allows for bitwise arithmetic) instead of a bytearray.
+    """
     if number > (2**(8*num_bytes))-1:
         raise ValueError("Unsigned integer %d does not fit into %d bytes!" % (number, num_bytes))
     byte_list = []
@@ -77,7 +85,11 @@ def _val_to_byte_list(number, num_bytes, big_endian=True):
             byte_list.append(val)
     return byte_list
 
+
 def _flatten(list_of_lists):
+    """
+    Turns a nested list of lists ([a,[b,c]]) into a flat list ([a,b,c]).
+    """
     out = []
     if type(list_of_lists) is int:
         return [list_of_lists]
@@ -88,18 +100,30 @@ def _flatten(list_of_lists):
             out += _flatten(item)
     return out
 
+
 def _add_padding(byte_list, intended_length, padding_byte=0x00):
+    """
+    Pads a list with 0's so that it reaches the intended length.
+    """
     for i in range(intended_length - len(byte_list)):
         byte_list.append(padding_byte)
     return byte_list
 
 
 def _debug(msg):
+    """
+    Internal debugging function, prints out parameters on stdout
+    if global var `DEBUG` is True
+    """
     if DEBUG:
-        print(("DEBUG: " + str(msg)))
+        print("DEBUG: " + str(msg))
+
 
 class Accelerometer(object):
-   
+    """
+    Represents the accelerometer of the Wiimote.
+    """
+
     SUPPORTED_REPORTS = [0x31, 0x33]
 
     def __init__(self, wiimote):
@@ -119,19 +143,33 @@ class Accelerometer(object):
             return self._state[axis]
         else:
             raise IndexError("list index %d out of range" % (axis))
-    
+
     def register_callback(self, func):
+        """
+        Register a callback function `func` that gets called every time
+        when new accelerometer values are transmitted from the Wiimote.
+        A list with XYZ accelerometer values between 0 and 1023 is passed
+        to the callback function.
+        """
         self._callbacks.append(func)
 
     def unregister_callback(self, func):
+        """
+        Unregister a callback function `func` that has been previously registered.
+        The function will no longer get called on new accelerometer data from the Wiimote.
+        """
         if func in self._callbacks:
             self._callbacks.remove(func)
 
     def _notify_callbacks(self):
         for callback in self._callbacks:
             callback(self._state)
-    
+
     def handle_report(self, report):
+        """
+        Extract accelerometer data from a Wiimote report.
+        Usually gets called by the Wiimote CommunicationHandler object. 
+        """
         if report[0] in [0x3e, 0x3f]: # interleaved modes
             raise NotImplementedError("Data reporting mode 0x3e/0x3f not supported")
         x_msb, y_msb, z_msb = report[3:6]
@@ -140,10 +178,12 @@ class Accelerometer(object):
         z = (z_msb << 2) + ((report[2] & 0b01000000) >> 5)
         self._state = [x, y, z]
         self._notify_callbacks()
-                    
-    
+
 
 class Buttons(object):
+    """
+    Represents the buttons of the Wiimote.
+    """
     
     BUTTONS = {'A': 0x0008,
                'B': 0x0004,
@@ -179,9 +219,18 @@ class Buttons(object):
             raise KeyError(str(btn))
 
     def register_callback(self, func):
+        """
+        Register a callback function `func` that gets called every time 
+        when new button states are transmitted from the Wiimote.
+        A list of all _changed_ buttons is passed as parameter to this function.
+        """
         self._callbacks.append(func)
     
     def unregister_callback(self, func):
+        """
+        Unregister a callback function `func` that has been previously registered.
+        The function will no longer get called on new accelerometer data from the Wiimote.
+        """
         if func in self._callbacks:
             self._callbacks.remove(func)
 
@@ -190,6 +239,10 @@ class Buttons(object):
             callback(diff)
 
     def handle_report(self, report):
+        """
+        Extract button data from a Wiimote report.
+        Usually gets called by the Wiimote CommunicationHandler object. 
+        """
         btn_bytes = (report[1] << 8) + report[2]
         new_state = {}
         for btn, mask in list(Buttons.BUTTONS.items()):
@@ -207,6 +260,9 @@ class Buttons(object):
                     
 
 class LEDs(object):
+    """
+    Represents the LEDs of the Wiimote.
+    """
 
     def __init__(self, wiimote):
         self._state = [False, False, False, False]
@@ -233,6 +289,10 @@ class LEDs(object):
             raise IndexError("list index out of range")
     
     def set_leds(self, led_list):
+        """
+        Set leds 1-4.
+        led_list: list of four boolean values representing the states of the LEDs
+        """
         for led_no, val in enumerate(led_list):
             self._state[led_no] = True if val else False
         RPT_LED = 0x11
@@ -242,22 +302,35 @@ class LEDs(object):
                led_byte += val
         self._com._send(RPT_LED, led_byte)
 
-class Rumbler(object):
 
+class Rumbler(object):
+    """
+    Represents the rumble motor of the Wiimote.
+    """
     def __init__(self, wiimote):
         self._state = False
         self.wiimote = wiimote
 
     def set_rumble(self, state):
+        """
+        Activate or deactivate the rumble motor.
+        state: True or False
+        """
         self._state = state
         self.wiimote._com.set_rumble(state)
 
     def rumble(self, length=0.5):
+        """
+        Activate the rumble motor for `length` seconds.
+        """
         t = threading.Timer(length, self.set_rumble, [False])
         t.start()
         self.set_rumble(True)
 
 class IRCam(object):
+    """
+    Represents the infrared camera of the Wiimote.
+    """
 
     MODE_BASIC = 1
     MODE_EXTENDED = 3
@@ -297,6 +370,14 @@ class IRCam(object):
             raise IndexError("list index out of range")
 
     def set_mode_sensitivity(self, mode, sensitivity):
+        """
+        Sets sensitivity and verbosity of IR camera.
+        Valid values for mode: `IRCam.MODE_BASIC`, `IRCam.MODE_EXTENDED`, `IRCam.MODE_FULL`.
+        Valid values for sensitivity: 0 (lowest) to 6 (highest).
+        Default mode: MODE_EXTENDED
+        Default sensitivity: 3
+        See WiiBrew documentation.
+        """
         if sensitivity > len(self.SENSITIVITY_BLOCKS) - 1 or \
            (mode not in [self.MODE_BASIC, self.MODE_EXTENDED, self.MODE_FULL]):
             raise TypeError("wrong mode or sensitivity level given")
@@ -341,6 +422,7 @@ class IRCam(object):
             if size != 0:
                 self._state.append({'id': ir_obj, 'x': x, 'y': y, 'size': size})
         self._notify_callbacks()
+
 
 class Memory(object):
 
@@ -497,7 +579,7 @@ class WiiMote(object):
         self.memory = Memory(self)
         self.ir = IRCam(self)
         self._com.start()
-        self.leds[0] = True
+        self.leds[0] = True # set first LED to signal successful connection.
        
     def disconnect(self):
         self._com.running = False
