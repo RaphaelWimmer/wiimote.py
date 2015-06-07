@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # coding: utf-8
 # -*- coding: utf-8 -*-
 
@@ -49,7 +49,7 @@ class WiimoteNode(Node):
     Text input box allows for setting a Bluetooth MAC address. 
     Pressing the "connect" button tries connecting to the Wiimote.
     Update rate can be changed via a spinbox widget. Setting it to "0" 
-    activates callbacks everytime a new sensor value arrives (which is
+    activates callbacks every time a new sensor value arrives (which is
     quite often -> performance hit)
     """
     nodeName = "Wiimote"
@@ -62,15 +62,22 @@ class WiimoteNode(Node):
         }
         self.wiimote = None
         self._acc_vals = []
+
+        # Configuration UI
         self.ui = QtGui.QWidget()
         self.layout = QtGui.QGridLayout()
-
+        
         label = QtGui.QLabel("Bluetooth MAC address:")
         self.layout.addWidget(label)
+        
         self.text = QtGui.QLineEdit()
+        self.btaddr = "b8:ae:6e:18:5d:ab" # set some example
+        self.text.setText(self.btaddr)
         self.layout.addWidget(self.text)
+        
         label2 = QtGui.QLabel("Update rate (Hz)")
         self.layout.addWidget(label2)
+
         self.update_rate_input = QtGui.QSpinBox()
         self.update_rate_input.setMinimum(0)
         self.update_rate_input.setMaximum(60)
@@ -79,14 +86,15 @@ class WiimoteNode(Node):
         self.layout.addWidget(self.update_rate_input)
 
         self.connect_button = QtGui.QPushButton("connect")
+        self.connect_button.clicked.connect(self.connect_wiimote)
         self.layout.addWidget(self.connect_button)
         self.ui.setLayout(self.layout)
-        self.connect_button.clicked.connect(self.connect_wiimote)
-        self.btaddr = "b8:ae:6e:18:5d:ab" # for ease of use
-        self.text.setText(self.btaddr)
+       
+        # update timer
         self.update_timer = QtCore.QTimer()
         self.update_timer.timeout.connect(self.update_all_sensors)
-    
+
+        # super()
         Node.__init__(self, name, terminals=terminals)
         
 
@@ -122,8 +130,8 @@ class WiimoteNode(Node):
 
     def set_update_rate(self, rate):
         if rate == 0: # use callbacks for max. update rate
-            self.wiimote.accelerometer.register_callback(self.update_accel)
             self.update_timer.stop()
+            self.wiimote.accelerometer.register_callback(self.update_accel)
         else:
             self.wiimote.accelerometer.unregister_callback(self.update_accel)
             self.update_timer.start(1000.0/rate)
