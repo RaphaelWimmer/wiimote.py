@@ -36,7 +36,7 @@ import bluetooth
 import threading
 import time
 
-VERSION = (0,2)
+VERSION = (0,3)
 DEBUG = False
 KNOWN_DEVICES = ['Nintendo RVL-CNT-01', 'Nintendo RVL-CNT-01-TR']
 
@@ -434,18 +434,18 @@ class CommunicationHandler(threading.Thread):
     
     def _send(self, *bytes_to_send):
         _debug("sending " + str(bytes_to_send))
-        data_str = chr(self._CMD_SET_REPORT)
+        data_str = self._CMD_SET_REPORT.to_bytes(1,'big')
         bytes_to_send = _flatten(bytes_to_send)
         bytes_to_send[1] |= int(self.rumble)
         for b in bytes_to_send:
-            data_str += chr(b)
+            data_str += b.to_bytes(1,'big')
         self._sendsocket.send(data_str)
 
     def run(self):
         self.running = True
         while self.running:
             try:
-                data = list(map(ord,self._datasocket.recv(32)))
+                data = self._datasocket.recv(32)
             except bluetooth.BluetoothError:
                 continue
             if len(data) < 2: # disconnect!
@@ -464,7 +464,7 @@ class CommunicationHandler(threading.Thread):
         self._send(0x12, 0x00, mode)
 
     def _handle(self, bytes_read):
-        #_debug(bytes_read)
+        _debug("received " + str(bytes_read))
         #assert(bytes_read[0] == self._CMD_SET_REPORT + 1)
         rpt_type = bytes_read[1]
         # all reports include button data
