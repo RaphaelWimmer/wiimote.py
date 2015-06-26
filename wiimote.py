@@ -381,6 +381,8 @@ class IRCam(object):
         if sensitivity > len(self.SENSITIVITY_BLOCKS) - 1 or \
            (mode not in [self.MODE_BASIC, self.MODE_EXTENDED, self.MODE_FULL]):
             raise TypeError("wrong mode or sensitivity level given")
+        self._mode = mode
+        self._sensitivity = sensitivity
         self._com.set_report_mode(0x33) #todo: adjust for other modes!!
         self._com._send(0x13, 0x04)
         self._com._send(0x1a, 0x04)
@@ -398,6 +400,9 @@ class IRCam(object):
 
     def set_sensitivity(self, sensitivity):
         self.set_mode_sensitivity(self._mode, sensitivity) 
+
+    def set_mode(self, mode):
+        self.set_mode_sensitivity(mode, self._sensitivity) 
 
     def register_callback(self, func):
         self._callbacks.append(func)
