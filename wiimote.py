@@ -579,6 +579,12 @@ class WiiMote(object):
         self.rumbler = Rumbler(self)
         self.memory = Memory(self)
         self.ir = IRCam(self)
+        """
+        Initializations before this point may not read from memory as 
+        this would block forever (until the CommunicationHandler is started).
+        CommunicationHandler can not be started earlier because the sensors
+        would not yet be assigned to variables
+        """
         self._com.start()
         self.leds[0] = True # set first LED to signal successful connection.
        
