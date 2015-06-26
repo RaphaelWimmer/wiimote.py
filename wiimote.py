@@ -336,7 +336,7 @@ class IRCam(object):
     MODE_EXTENDED = 3
     MODE_FULL = 5
 
-    # adapted from WiiBrew list, higher index means higher sensitivty
+    # adapted from WiiBrew list, higher index means higher sensitivity
     SENSITIVITY_BLOCKS = [
         ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0x64, 0x00, 0xfe], [0xfd, 0x05]), # Wii Level 1 
         ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0x96, 0x00, 0xb4], [0xb3, 0x04]), # Wii Level 2
