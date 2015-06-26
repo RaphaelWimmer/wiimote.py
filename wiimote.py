@@ -388,6 +388,7 @@ class IRCam(object):
         self.wiimote.memory.write(0xb00000, self.SENSITIVITY_BLOCKS[mode][0], eeprom=False)
         self.wiimote.memory.write(0xb0001a, self.SENSITIVITY_BLOCKS[mode][1], eeprom=False)
         self.wiimote.memory.write(0xb00033, mode, eeprom=False)
+        self.wiimote.memory.write(0xb00030, 0x08, eeprom=False)
 
     def disable(self):
         pass
