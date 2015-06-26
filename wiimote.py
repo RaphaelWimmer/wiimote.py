@@ -432,6 +432,8 @@ class Memory(object):
     
     SUPPORTED_REPORTS = [0x21]
 
+    MAX_ADDRESS = 0x16FF
+
     def __init__(self, wiimote):
         self.wiimote = wiimote
         self._com = wiimote._com
@@ -441,7 +443,13 @@ class Memory(object):
 
 
     def write(self, address, data, eeprom=False):
+        if eeprom and address + len(data) > Memory.MAX_ADDRESS:
+            raise ValueError("EEPROM address needs to be between 0x0000 and 0x16FF")
+        if address < 0:
+            raise ValueError("Memory address needs to be greater than 0x0000")
         # to do: send larger blocks in multiple 16-byte requests instead of failing
+        if len(data) > 16:
+            raise ValueError("A maximum of 16 bytes can be sent per function call")
         address_bytes = _val_to_byte_list(address, 3, big_endian=True)
         bytes_to_send = _flatten(data)
         amount = len(bytes_to_send)
@@ -453,6 +461,10 @@ class Memory(object):
     def read(self, address, amount, eeprom=False):
         if self._request_in_progress:
             raise RuntimeError("Memory read already in progress.")
+        if eeprom and address + len(data) > Memory.MAX_ADDRESS:
+            raise ValueError("EEPROM address needs to be between 0x0000 and 0x16FF")
+        if address < 0:
+            raise ValueError("Memory address needs to be greater than 0x0000")
         self._bytes_remaining = amount
         address_bytes = _val_to_byte_list(address, 3, big_endian=True)
         amount_bytes = _val_to_byte_list(amount, 2, big_endian=True)
