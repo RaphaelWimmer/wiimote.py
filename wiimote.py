@@ -448,16 +448,16 @@ class Memory(object):
 
 
     def write(self, address, data, eeprom=False):
-        if eeprom and address + len(data) > Memory.MAX_ADDRESS:
+        address_bytes = _val_to_byte_list(address, 3, big_endian=True)
+        bytes_to_send = _flatten(data)
+        amount = len(bytes_to_send)
+        if eeprom and address + amount > Memory.MAX_ADDRESS:
             raise ValueError("EEPROM address needs to be between 0x0000 and 0x16FF")
         if address < 0:
             raise ValueError("Memory address needs to be greater than 0x0000")
         # to do: send larger blocks in multiple 16-byte requests instead of failing
-        if len(data) > 16:
+        if amount > 16:
             raise ValueError("A maximum of 16 bytes can be sent per function call")
-        address_bytes = _val_to_byte_list(address, 3, big_endian=True)
-        bytes_to_send = _flatten(data)
-        amount = len(bytes_to_send)
         amount_byte = _val_to_byte_list(amount, 1, big_endian=True)
         bytes_to_send = _add_padding(bytes_to_send, 16)
         control_or_eeprom = 0x00 if eeprom else 0x04
@@ -466,7 +466,7 @@ class Memory(object):
     def read(self, address, amount, eeprom=False):
         if self._request_in_progress:
             raise RuntimeError("Memory read already in progress.")
-        if eeprom and address + len(data) > Memory.MAX_ADDRESS:
+        if eeprom and address + amount > Memory.MAX_ADDRESS:
             raise ValueError("EEPROM address needs to be between 0x0000 and 0x16FF")
         if address < 0:
             raise ValueError("Memory address needs to be greater than 0x0000")
