@@ -456,7 +456,7 @@ class Memory(object):
         self._bytes_remaining = amount
         address_bytes = _val_to_byte_list(address, 3, big_endian=True)
         amount_bytes = _val_to_byte_list(amount, 2, big_endian=True)
-        control_or_eeprom = 0x00 if eeprom else 0x02
+        control_or_eeprom = 0x00 if eeprom else 0x04
         self._request_in_progress = True
         self._reply_buffer = []
         self._com._send(Memory.RPT_READ, control_or_eeprom, address_bytes, amount_bytes) 
