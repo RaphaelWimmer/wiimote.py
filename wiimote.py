@@ -119,6 +119,94 @@ def _debug(msg):
         print("DEBUG: " + str(msg))
 
 
+class Gyroscope(object):
+    """
+    Represents the gyroscope of the Wiimote.
+    """
+
+    SUPPORTED_REPORTS = [0x32, 0x37]
+
+    def __init__(self, wiimote):
+        self._state = [0.0, 0.0, 0.0]
+        self.wiimote = wiimote
+        self._com = wiimote._com
+        self._callbacks = []
+
+    def __len__(self):
+        return len(self._state)
+
+    def __repr__(self):
+        return repr(self._state)
+
+    def __getitem__(self, axis):
+        if 0 <= axis <= 2:
+            return self._state[axis]
+        else:
+            raise IndexError("list index %d out of range" % (axis))
+
+    def register_callback(self, func):
+        """
+        Register a callback function `func` that gets called every time
+        when new gyroscope values are transmitted from the Wiimote.
+        A list with XYZ gyroscope values is passed
+        to the callback function.
+        """
+        self._callbacks.append(func)
+
+    def unregister_callback(self, func):
+        """
+        Unregister a callback function `func` that has been previously registered.
+        The function will no longer get called on new gyroscope data from the Wiimote.
+        """
+        if func in self._callbacks:
+            self._callbacks.remove(func)
+
+    def _notify_callbacks(self):
+        for callback in self._callbacks:
+            callback(self._state)
+
+    def handle_report(self, report):
+        """
+        Extract gyroscope data from a Wiimote report.
+        Usually gets called by the Wiimote CommunicationHandler object.
+        """
+        if self.report_type == self.SUPPORTED_REPORTS[0]:
+            z_msb, y_msb, x_msb, Z_msb, Y_msb, X_msb = report[3:9]
+        elif self.report_type == self.SUPPORTED_REPORTS[1]:
+            z_msb, y_msb, x_msb, Z_msb, Y_msb, X_msb = report[16:22]
+
+        x = ((X_msb & 0xFC) << 6) | x_msb
+        y = ((Y_msb & 0xFC) << 6) | y_msb
+        z = ((Z_msb & 0xFC) << 6) | z_msb
+
+        self._state = [x, y, z]
+        self._notify_callbacks()
+
+    def activate(self, rep_mode=0x37):
+        """
+        Activates the extension controller and sets the report mode to get data from the gyroscope.
+        Gets called by the activate method of the Wiimote class.
+        """
+        data = 0x04
+        reg_addr = 0xA600FE
+        self.report_type = rep_mode
+        self.wiimote.memory.write(reg_addr, data)
+        self._com.set_report_mode(rep_mode)
+
+    def deactivate(self):
+        """
+        Deactivates the extension controller and sets the default report mode.
+        Gets called by the activate method of the Wiimote class.
+        """
+        data = 0x55
+        reg_addr = 0xA400F0
+        self.wiimote.memory.write(reg_addr, data)
+        data = 0x00
+        reg_addr = 0xA400FB
+        self.wiimote.memory.write(reg_addr, data)
+        self._com.set_report_mode(0x33)
+
+
 class Accelerometer(object):
     """
     Represents the accelerometer of the Wiimote.
@@ -168,9 +256,9 @@ class Accelerometer(object):
     def handle_report(self, report):
         """
         Extract accelerometer data from a Wiimote report.
-        Usually gets called by the Wiimote CommunicationHandler object. 
+        Usually gets called by the Wiimote CommunicationHandler object.
         """
-        if report[0] in [0x3e, 0x3f]: # interleaved modes
+        if report[0] in [0x3e, 0x3f]:  # interleaved modes
             raise NotImplementedError("Data reporting mode 0x3e/0x3f not supported")
         x_msb, y_msb, z_msb = report[3:6]
         x = (x_msb << 2) + ((report[1] & 0b01100000) >> 5)
@@ -184,10 +272,10 @@ class Buttons(object):
     """
     Represents the buttons of the Wiimote.
     """
-    
+
     BUTTONS = {'A': 0x0008,
                'B': 0x0004,
-               'Down' : 0x0400,
+               'Down': 0x0400,
                'Home': 0x0080,
                'Left': 0x0100,
                'Minus': 0x0010,
@@ -196,7 +284,7 @@ class Buttons(object):
                'Right': 0x0200,
                'Two': 0x0001,
                'Up': 0x0800,
-    }
+               }
 
     def __init__(self, wiimote):
         self._wiimote = wiimote
@@ -220,12 +308,12 @@ class Buttons(object):
 
     def register_callback(self, func):
         """
-        Register a callback function `func` that gets called every time 
+        Register a callback function `func` that gets called every time
         when new button states are transmitted from the Wiimote.
         A list of all _changed_ buttons is passed as parameter to this function.
         """
         self._callbacks.append(func)
-    
+
     def unregister_callback(self, func):
         """
         Unregister a callback function `func` that has been previously registered.
@@ -241,7 +329,7 @@ class Buttons(object):
     def handle_report(self, report):
         """
         Extract button data from a Wiimote report.
-        Usually gets called by the Wiimote CommunicationHandler object. 
+        Usually gets called by the Wiimote CommunicationHandler object.
         """
         btn_bytes = (report[1] << 8) + report[2]
         new_state = {}
@@ -257,7 +345,7 @@ class Buttons(object):
                 diff.append((btn, state))
                 self._state[btn] = state
         return diff
-                    
+
 
 class LEDs(object):
     """
@@ -287,7 +375,7 @@ class LEDs(object):
             self.set_leds(new_led_state)
         else:
             raise IndexError("list index out of range")
-    
+
     def set_leds(self, led_list):
         """
         Set leds 1-4.
@@ -299,7 +387,7 @@ class LEDs(object):
         led_byte = 0x00
         for val, state in zip([0x10, 0x20, 0x40, 0x80], self._state):
             if state:
-               led_byte += val
+                led_byte += val
         self._com._send(RPT_LED, led_byte)
 
 
@@ -327,6 +415,7 @@ class Rumbler(object):
         t.start()
         self.set_rumble(True)
 
+
 class IRCam(object):
     """
     Represents the infrared camera of the Wiimote.
@@ -336,17 +425,17 @@ class IRCam(object):
     MODE_EXTENDED = 3
     MODE_FULL = 5
 
-    # adapted from WiiBrew list, higher index means higher sensitivity
+    # adapted from WiiBrew list, higher index means higher sensitivty
     SENSITIVITY_BLOCKS = [
-        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0x64, 0x00, 0xfe], [0xfd, 0x05]), # Wii Level 1 
-        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0x96, 0x00, 0xb4], [0xb3, 0x04]), # Wii Level 2
-        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0xaa, 0x00, 0x64], [0x63, 0x03]), # Wii Level 3
-        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0xc8, 0x00, 0x36], [0x35, 0x03]), # Wii Level 4
-        ([0x07, 0x00, 0x00, 0x71, 0x01, 0x00, 0x72, 0x00, 0x20], [0x1f, 0x03]), # Wii Level 5
-        ([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x0c], [0x00, 0x00]), # Max Sensitivity
+        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0x64, 0x00, 0xfe], [0xfd, 0x05]),  # Wii Level 1
+        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0x96, 0x00, 0xb4], [0xb3, 0x04]),  # Wii Level 2
+        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0xaa, 0x00, 0x64], [0x63, 0x03]),  # Wii Level 3
+        ([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0xc8, 0x00, 0x36], [0x35, 0x03]),  # Wii Level 4
+        ([0x07, 0x00, 0x00, 0x71, 0x01, 0x00, 0x72, 0x00, 0x20], [0x1f, 0x03]),  # Wii Level 5
+        ([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x0c], [0x00, 0x00]),  # Max Sensitivity
     ]
-    
-    SUPPORTED_REPORTS = [0x33, 0x36,0x37,0x3e,0x3f]
+
+    SUPPORTED_REPORTS = [0x33, 0x36, 0x37, 0x3e, 0x3f]
 
     def __init__(self, wiimote):
         self.wiimote = wiimote
@@ -381,16 +470,13 @@ class IRCam(object):
         if sensitivity > len(self.SENSITIVITY_BLOCKS) - 1 or \
            (mode not in [self.MODE_BASIC, self.MODE_EXTENDED, self.MODE_FULL]):
             raise TypeError("wrong mode or sensitivity level given")
-        self._mode = mode
-        self._sensitivity = sensitivity
-        self._com.set_report_mode(0x33) #todo: adjust for other modes!!
+        self._com.set_report_mode(0x33)  # todo: adjust for other modes!!
         self._com._send(0x13, 0x04)
         self._com._send(0x1a, 0x04)
         self.wiimote.memory.write(0xb00030, 0x08, eeprom=False)
         self.wiimote.memory.write(0xb00000, self.SENSITIVITY_BLOCKS[mode][0], eeprom=False)
         self.wiimote.memory.write(0xb0001a, self.SENSITIVITY_BLOCKS[mode][1], eeprom=False)
         self.wiimote.memory.write(0xb00033, mode, eeprom=False)
-        self.wiimote.memory.write(0xb00030, 0x08, eeprom=False)
 
     def disable(self):
         pass
@@ -399,14 +485,11 @@ class IRCam(object):
         return self._state
 
     def set_sensitivity(self, sensitivity):
-        self.set_mode_sensitivity(self._mode, sensitivity) 
-
-    def set_mode(self, mode):
-        self.set_mode_sensitivity(mode, self._sensitivity) 
+        self.set_mode_sensitivity(self._mode, sensitivity)
 
     def register_callback(self, func):
         self._callbacks.append(func)
-    
+
     def unregister_callback(self, func):
         if func in self._callbacks:
             self._callbacks.remove(func)
@@ -434,10 +517,8 @@ class Memory(object):
 
     RPT_READ = 0x17
     RPT_WRITE = 0x16
-    
-    SUPPORTED_REPORTS = [0x21]
 
-    MAX_ADDRESS = 0x16FF
+    SUPPORTED_REPORTS = [0x21]
 
     def __init__(self, wiimote):
         self.wiimote = wiimote
@@ -446,46 +527,35 @@ class Memory(object):
         self._bytes_requested = 0
         self._reply_buffer = []
 
-
     def write(self, address, data, eeprom=False):
+        # to do: send larger blocks in multiple 16-byte requests instead of failing
         address_bytes = _val_to_byte_list(address, 3, big_endian=True)
         bytes_to_send = _flatten(data)
         amount = len(bytes_to_send)
-        if eeprom and address + amount > Memory.MAX_ADDRESS:
-            raise ValueError("EEPROM address needs to be between 0x0000 and 0x16FF")
-        if address < 0:
-            raise ValueError("Memory address needs to be greater than 0x0000")
-        # to do: send larger blocks in multiple 16-byte requests instead of failing
-        if amount > 16:
-            raise ValueError("A maximum of 16 bytes can be sent per function call")
         amount_byte = _val_to_byte_list(amount, 1, big_endian=True)
         bytes_to_send = _add_padding(bytes_to_send, 16)
         control_or_eeprom = 0x00 if eeprom else 0x04
-        self._com._send(Memory.RPT_WRITE, control_or_eeprom, address_bytes, amount_byte, bytes_to_send) 
+        self._com._send(Memory.RPT_WRITE, control_or_eeprom, address_bytes, amount_byte, bytes_to_send)
 
     def read(self, address, amount, eeprom=False):
         if self._request_in_progress:
             raise RuntimeError("Memory read already in progress.")
-        if eeprom and address + amount > Memory.MAX_ADDRESS:
-            raise ValueError("EEPROM address needs to be between 0x0000 and 0x16FF")
-        if address < 0:
-            raise ValueError("Memory address needs to be greater than 0x0000")
         self._bytes_remaining = amount
         address_bytes = _val_to_byte_list(address, 3, big_endian=True)
         amount_bytes = _val_to_byte_list(amount, 2, big_endian=True)
-        control_or_eeprom = 0x00 if eeprom else 0x04
+        control_or_eeprom = 0x00 if eeprom else 0x02
         self._request_in_progress = True
         self._reply_buffer = []
-        self._com._send(Memory.RPT_READ, control_or_eeprom, address_bytes, amount_bytes) 
+        self._com._send(Memory.RPT_READ, control_or_eeprom, address_bytes, amount_bytes)
         # now wait until handle() has filled our reply buffer
         while self._request_in_progress:
             time.sleep(0.01)
         return self._reply_buffer
 
     def handle_report(self, report):
-        if report[0] not in Memory.SUPPORTED_REPORTS: # interleaved modes
+        if report[0] not in Memory.SUPPORTED_REPORTS:  # interleaved modes
             raise NotImplementedError("can not handle this report")
-        error = (report[3] & 0x0f) 
+        error = (report[3] & 0x0f)
         if error != 0:
             raise RuntimeError("Error condition %x received during memory read!" % error)
         num_bytes_received = ((report[3] >> 4) & 0x0f) + 1
@@ -499,17 +569,18 @@ class Memory(object):
 
 
 class CommunicationHandler(threading.Thread):
-    
+
     MODE_DEFAULT = 0x30
-    MODE_ACC     = 0x31
-    MODE_ACC_IR  = 0x33
+    MODE_ACC = 0x31
+    MODE_EXTENSION = 0x32
+    MODE_ACC_IR = 0x33
 
     RPT_STATUS_REQ = 0x15
 
     def __init__(self, wiimote):
         threading.Thread.__init__(self)
         self.daemon = True
-        self.rumble = False # rumble always 
+        self.rumble = False  # rumble always
         self.wiimote = wiimote
         self.btaddr = wiimote.btaddr
         self.model = wiimote.model
@@ -531,14 +602,14 @@ class CommunicationHandler(threading.Thread):
         except NotImplementedError:
             print("socket timeout not implemented with this bluetooth module")
         self.set_report_mode(self.MODE_ACC_IR)
-    
+
     def _send(self, *bytes_to_send):
         _debug("sending " + str(bytes_to_send))
-        data_str = self._CMD_SET_REPORT.to_bytes(1,'big')
+        data_str = self._CMD_SET_REPORT.to_bytes(1, 'big')
         bytes_to_send = _flatten(bytes_to_send)
         bytes_to_send[1] |= int(self.rumble)
         for b in bytes_to_send:
-            data_str += b.to_bytes(1,'big')
+            data_str += b.to_bytes(1, 'big')
         self._sendsocket.send(data_str)
 
     def run(self):
@@ -548,7 +619,7 @@ class CommunicationHandler(threading.Thread):
                 data = self._datasocket.recv(32)
             except bluetooth.BluetoothError:
                 continue
-            if len(data) < 2: # disconnect!
+            if len(data) < 2:  # disconnect!
                 self.running = False
             else:
                 self._handle(data)
@@ -565,7 +636,7 @@ class CommunicationHandler(threading.Thread):
 
     def _handle(self, bytes_read):
         _debug("received " + str(bytes_read))
-        #assert(bytes_read[0] == self._CMD_SET_REPORT + 1)
+        # assert(bytes_read[0] == self._CMD_SET_REPORT + 1)
         rpt_type = bytes_read[1]
         # all reports include button data
         self.wiimote.buttons.handle_report(bytes_read[1:])
@@ -575,6 +646,8 @@ class CommunicationHandler(threading.Thread):
             self.wiimote.memory.handle_report(bytes_read[1:])
         if rpt_type in IRCam.SUPPORTED_REPORTS:
             self.wiimote.ir.handle_report(bytes_read[1:])
+        if rpt_type in Gyroscope.SUPPORTED_REPORTS:
+            self.wiimote.gyroscope.handle_report(bytes_read[1:])
 
     def set_rumble(self, state):
         self.rumble = state
@@ -592,19 +665,14 @@ class WiiMote(object):
         self._com = CommunicationHandler(self)
         self._leds = LEDs(self)
         self.accelerometer = Accelerometer(self)
+        self.gyroscope = Gyroscope(self)
         self.buttons = Buttons(self)
         self.rumbler = Rumbler(self)
         self.memory = Memory(self)
         self.ir = IRCam(self)
-        """
-        Initializations before this point may not read from memory as 
-        this would block forever (until the CommunicationHandler is started).
-        CommunicationHandler can not be started earlier because the sensors
-        would not yet be assigned to variables
-        """
         self._com.start()
-        self.leds[0] = True # set first LED to signal successful connection.
-       
+        self.leds[0] = True  # set first LED to signal successful connection.
+
     def disconnect(self):
         self._com.running = False
 
@@ -620,6 +688,14 @@ class WiiMote(object):
     def _reset(self):
         pass
 
+    # currently neccessary to activate the gyroscope
+    # TODO: add support for reporting types 0x37 to all other modules
+    def activate_gyroscope(self):
+        self.gyroscope.activate()
+
+    def deactivate_gyroscope(self):
+        self.gyroscope.deactivate()
+
     def rumble(self, length=0.5):
         self.rumbler.rumble(length)
 
@@ -633,8 +709,4 @@ class WiiMote(object):
             self._leds.set_leds(led_list)
 
     leds = property(get_leds, set_leds)
-
-
-    #rumble = property(get_rumble, set_rumble)
-
-
+    # rumble = property(get_rumble, set_rumble)
