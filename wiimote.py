@@ -119,6 +119,94 @@ def _debug(msg):
         print("DEBUG: " + str(msg))
 
 
+class Gyroscope(object):
+    """
+    Represents the gyroscope of the Wiimote.
+    """
+
+    SUPPORTED_REPORTS = [0x32, 0x37]
+
+    def __init__(self, wiimote):
+        self._state = [0.0, 0.0, 0.0]
+        self.wiimote = wiimote
+        self._com = wiimote._com
+        self._callbacks = []
+
+    def __len__(self):
+        return len(self._state)
+
+    def __repr__(self):
+        return repr(self._state)
+
+    def __getitem__(self, axis):
+        if 0 <= axis <= 2:
+            return self._state[axis]
+        else:
+            raise IndexError("list index %d out of range" % (axis))
+
+    def register_callback(self, func):
+        """
+        Register a callback function `func` that gets called every time
+        when new gyroscope values are transmitted from the Wiimote.
+        A list with XYZ gyroscope values is passed
+        to the callback function.
+        """
+        self._callbacks.append(func)
+
+    def unregister_callback(self, func):
+        """
+        Unregister a callback function `func` that has been previously registered.
+        The function will no longer get called on new gyroscope data from the Wiimote.
+        """
+        if func in self._callbacks:
+            self._callbacks.remove(func)
+
+    def _notify_callbacks(self):
+        for callback in self._callbacks:
+            callback(self._state)
+
+    def handle_report(self, report):
+        """
+        Extract gyroscope data from a Wiimote report.
+        Usually gets called by the Wiimote CommunicationHandler object.
+        """
+        if self.report_type == self.SUPPORTED_REPORTS[0]:
+            z_msb, y_msb, x_msb, Z_msb, Y_msb, X_msb = report[3:9]
+        elif self.report_type == self.SUPPORTED_REPORTS[1]:
+            z_msb, y_msb, x_msb, Z_msb, Y_msb, X_msb = report[16:22]
+
+        x = ((X_msb & 0xFC) << 6) | x_msb
+        y = ((Y_msb & 0xFC) << 6) | y_msb
+        z = ((Z_msb & 0xFC) << 6) | z_msb
+
+        self._state = [x, y, z]
+        self._notify_callbacks()
+
+    def activate(self, rep_mode=0x37):
+        """
+        Activates the extension controller and sets the report mode to get data from the gyroscope.
+        Gets called by the activate method of the Wiimote class.
+        """
+        data = 0x04
+        reg_addr = 0xA600FE
+        self.report_type = rep_mode
+        self.wiimote.memory.write(reg_addr, data)
+        self._com.set_report_mode(rep_mode)
+
+    def deactivate(self):
+        """
+        Deactivates the extension controller and sets the default report mode.
+        Gets called by the activate method of the Wiimote class.
+        """
+        data = 0x55
+        reg_addr = 0xA400F0
+        self.wiimote.memory.write(reg_addr, data)
+        data = 0x00
+        reg_addr = 0xA400FB
+        self.wiimote.memory.write(reg_addr, data)
+        self._com.set_report_mode(0x33)
+
+
 class Accelerometer(object):
     """
     Represents the accelerometer of the Wiimote.
@@ -502,6 +590,7 @@ class CommunicationHandler(threading.Thread):
     
     MODE_DEFAULT = 0x30
     MODE_ACC     = 0x31
+    MODE_EXTENSION = 0x32
     MODE_ACC_IR  = 0x33
 
     RPT_STATUS_REQ = 0x15
@@ -575,6 +664,8 @@ class CommunicationHandler(threading.Thread):
             self.wiimote.memory.handle_report(bytes_read[1:])
         if rpt_type in IRCam.SUPPORTED_REPORTS:
             self.wiimote.ir.handle_report(bytes_read[1:])
+        if rpt_type in Gyroscope.SUPPORTED_REPORTS:
+            self.wiimote.gyroscope.handle_report(bytes_read[1:])
 
     def set_rumble(self, state):
         self.rumble = state
@@ -592,6 +683,7 @@ class WiiMote(object):
         self._com = CommunicationHandler(self)
         self._leds = LEDs(self)
         self.accelerometer = Accelerometer(self)
+        self.gyroscope = Gyroscope(self)
         self.buttons = Buttons(self)
         self.rumbler = Rumbler(self)
         self.memory = Memory(self)
