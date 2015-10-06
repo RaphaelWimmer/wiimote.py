@@ -151,6 +151,7 @@ class Gyroscope(object):
         A list with XYZ gyroscope values is passed
         to the callback function.
         """
+
         self._callbacks.append(func)
 
     def unregister_callback(self, func):
@@ -158,6 +159,7 @@ class Gyroscope(object):
         Unregister a callback function `func` that has been previously registered.
         The function will no longer get called on new gyroscope data from the Wiimote.
         """
+
         if func in self._callbacks:
             self._callbacks.remove(func)
 
@@ -170,14 +172,18 @@ class Gyroscope(object):
         Extract gyroscope data from a Wiimote report.
         Usually gets called by the Wiimote CommunicationHandler object.
         """
-        if self.report_type == self.SUPPORTED_REPORTS[0]:
-            z_msb, y_msb, x_msb, Z_msb, Y_msb, X_msb = report[3:9]
-        elif self.report_type == self.SUPPORTED_REPORTS[1]:
-            z_msb, y_msb, x_msb, Z_msb, Y_msb, X_msb = report[16:22]
 
-        x = ((X_msb & 0xFC) << 6) | x_msb
-        y = ((Y_msb & 0xFC) << 6) | y_msb
-        z = ((Z_msb & 0xFC) << 6) | z_msb
+        # How to read the reports from:
+        # http://wiibrew.org/wiki/Wiimote and http://abstrakraft.org/cwiid/wiki/MotionPlus
+        if self.report_type == 0x32:
+            zz, yy, xx, ZZ, YY, XX = report[3:9]
+        elif self.report_type == 0x37:
+            zz, yy, xx, ZZ, YY, XX = report[16:22]
+
+        # Calculation from http://abstrakraft.org/cwiid/wiki/MotionPlus
+        x = ((XX & 0xFC) << 6) | xx
+        y = ((YY & 0xFC) << 6) | yy
+        z = ((ZZ & 0xFC) << 6) | zz
 
         self._state = [x, y, z]
         self._notify_callbacks()
@@ -185,25 +191,21 @@ class Gyroscope(object):
     def activate(self, rep_mode=0x37):
         """
         Activates the extension controller and sets the report mode to get data from the gyroscope.
-        Gets called by the activate method of the Wiimote class.
         """
-        data = 0x04
-        reg_addr = 0xA600FE
+
         self.report_type = rep_mode
-        self.wiimote.memory.write(reg_addr, data)
+        # Activate MotionPlus as "active" extension. From: http://abstrakraft.org/cwiid/wiki/MotionPlus
+        self.wiimote.memory.write(0xA600FE, 0x04)
         self._com.set_report_mode(rep_mode)
 
     def deactivate(self):
         """
         Deactivates the extension controller and sets the default report mode.
-        Gets called by the activate method of the Wiimote class.
         """
-        data = 0x55
-        reg_addr = 0xA400F0
-        self.wiimote.memory.write(reg_addr, data)
-        data = 0x00
-        reg_addr = 0xA400FB
-        self.wiimote.memory.write(reg_addr, data)
+
+        # Deactivate MotionPlus. From http://abstrakraft.org/cwiid/wiki/MotionPlus
+        self.wiimote.memory.write(0xA400F0, 0x55)
+        self.wiimote.memory.write(0xA400FB, 0x00)
         self._com.set_report_mode(0x33)
 
 
