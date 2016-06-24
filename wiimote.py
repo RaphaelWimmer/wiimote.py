@@ -547,11 +547,13 @@ class CommunicationHandler(threading.Thread):
             try:
                 data = self._datasocket.recv(32)
             except bluetooth.BluetoothError:
+                _debug("BluetoothError while waiting for data")
                 continue
             if len(data) < 2: # disconnect!
                 self.running = False
             else:
                 self._handle(data)
+            time.sleep(0.001) # Wiimote: 100 Hz, check ten times as often
         self._dispose()
 
     def _dispose(self):
