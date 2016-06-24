@@ -73,6 +73,7 @@ def _val_to_byte_list(number, num_bytes, big_endian=True):
     Converts an integer into a big/little-endian multi-byte representation.
     Similar to int.to_bytes() in the standard lib but returns a list of integers
     between 0 and 255 (which allows for bitwise arithmetic) instead of a bytearray.
+    Example: _val_to_byte_list(513, 2, True) -> [0x02, 0x01] 
     """
     if number > (2**(8*num_bytes))-1:
         raise ValueError("Unsigned integer %d does not fit into %d bytes!" % (number, num_bytes))
@@ -103,7 +104,7 @@ def _flatten(list_of_lists):
 
 def _add_padding(byte_list, intended_length, padding_byte=0x00):
     """
-    Pads a list with 0's so that it reaches the intended length.
+    Pads a list with 0x00's or other padding bytes so that it reaches the intended length.
     """
     for i in range(intended_length - len(byte_list)):
         byte_list.append(padding_byte)
