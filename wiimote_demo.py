@@ -3,10 +3,16 @@
 import wiimote
 import time
 import sys
-    
+
+"""
+A simple demo script for the wiimote.py module.
+Start as `python3 wiimote_demo.py [bluetooth address of Wiimote]` and follow
+instructions.
+"""
+
 input("Press the 'sync' button on the back of your Wiimote Plus " +
-          "or buttons (1) and (2) on your classic Wiimote.\n" +
-          "Press <return> once the Wiimote's LEDs start blinking.")
+      "or buttons (1) and (2) on your classic Wiimote.\n" +
+      "Press <return> once the Wiimote's LEDs start blinking.")
 
 if len(sys.argv) == 1:
     addr, name = wiimote.find()[0]
@@ -19,7 +25,13 @@ print(("Connecting to %s (%s)" % (name, addr)))
 wm = wiimote.connect(addr, name)
 
 # Demo Time!
-patterns = [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1],[0,0,1,0],[0,1,0,0],[1,0,0,0]]
+patterns = [[1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0],
+            [0, 1, 0, 0],
+            [1, 0, 0, 0]]
 for i in range(5):
     for p in patterns:
         wm.leds = p
@@ -30,8 +42,8 @@ def print_ir(ir_data):
     if len(ir_data) == 0:
         return
     for ir_obj in ir_data:
-        #print("%4d %4d %2d     " % (ir_obj["x"],ir_obj["y"],ir_obj["size"]), end=' ')
-        print("%4d %4d %2d     " % (ir_obj["x"],ir_obj["y"],ir_obj["size"]))
+        # print("%4d %4d %2d     " % (ir_obj["x"],ir_obj["y"],ir_obj["size"]), end=' ')
+        print("%4d %4d %2d     " % (ir_obj["x"], ir_obj["y"], ir_obj["size"]))
     print()
 
 wm.ir.register_callback(print_ir)
@@ -45,4 +57,3 @@ while True:
         wm.leds[1] = False
         pass
     time.sleep(0.05)
-
