@@ -54,6 +54,8 @@ class WiimoteNode(Node):
     quite often -> performance hit)
     """
 
+    nodeName = "Wiimote"
+
     def __init__(self, name):
         terminals = {
             'accelX': dict(io='out'),
