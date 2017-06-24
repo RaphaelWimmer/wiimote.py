@@ -37,7 +37,38 @@ import bluetooth
 import threading
 import time
 
-VERSION = (0, 3)
+# ################### nanosleep ########################### #
+# from https://github.com/graycatlabs/PyBBIO/blob/master/tests/sleep_test.py
+import ctypes
+libc = ctypes.CDLL('libc.so.6')  # required for precise timing of speaker output
+
+
+class Timespec(ctypes.Structure):
+    """ timespec struct for nanosleep, see:
+    http://linux.die.net/man/2/nanosleep """
+    _fields_ = [('tv_sec', ctypes.c_long),
+                ('tv_nsec', ctypes.c_long)]
+
+libc.nanosleep.argtypes = [ctypes.POINTER(Timespec),
+                           ctypes.POINTER(Timespec)]
+nanosleep_req = Timespec()
+nanosleep_rem = Timespec()
+
+
+def nsleep(us):
+    """ Delay microseconds with libc nanosleep() using ctypes. """
+    if (us >= 1000000):
+        sec = us/1000000
+        us %= 1000000
+    else:
+        sec = 0
+    nanosleep_req.tv_sec = sec
+    nanosleep_req.tv_nsec = int(us * 1000)
+    libc.nanosleep(nanosleep_req, nanosleep_rem)
+
+# ########################################################### #
+
+VERSION = (0, 4)
 DEBUG = False
 KNOWN_DEVICES = ['Nintendo RVL-CNT-01', 'Nintendo RVL-CNT-01-TR']
 
@@ -336,6 +367,53 @@ class Rumbler(object):
         self.set_rumble(True)
 
 
+class Speaker(object):
+    """
+    Represents the speaker of the Wiimote.
+    """
+    def __init__(self, wiimote):
+        self._playing = False
+        self.wiimote = wiimote
+        self._com = wiimote._com
+
+    def beep(self):
+        """
+        Play a short beep through the speaker
+        """
+        if self._playing:
+            return
+        self._playing = True
+        RPT_SPKR_ON = 0x14
+        RPT_SPKR_MUTE = 0x19
+        RPT_SPKR_PLAY = 0x18
+        ON = 0x04
+        OFF = 0x00
+        self._com._send(RPT_SPKR_ON, ON)
+        self._com._send(RPT_SPKR_MUTE, ON)
+        # Write 0x01 to register 0xa20009
+        self.wiimote.memory.write(0xa20009, [0x01])
+        # Write 0x08 to register 0xa20001
+        self.wiimote.memory.write(0xa20001, [0x08])
+        # set up for 8-Bit PCM, 1000 Hz, see http://wiibrew.org/wiki/Wiimote#Speaker
+        self.wiimote.memory.write(0xa20001, [0x00, 0x40, 0x70, 0x17, 0x30, 0x00, 0x00])
+        self.wiimote.memory.write(0xa20008, [0x01])
+        self._com._send(RPT_SPKR_MUTE, OFF)
+        time.sleep(0.05)
+        num_samples = 20
+        # samples = [0, 30, 60, 90, 120, 90, 60, 30, 0, 255-30, 255-60, 255-90, 255-120, 255-90, 255-60, 255-30, 0, 0, 0, 0]
+        # samples = [0, 120, 240, 0, 120, 240, 0, 120, 240, 0, 120, 240, 0, 120, 240, 0, 120, 240, 0, 0]
+        # samples = [128,167,202,231,249,255,249,231,202,167,128,88,53,24,6,0,6,24,53,88,]
+        # samples = [0, 30, 60, 90, 120, 150, 180, 210, 240, 210, 180, 150, 120, 90, 60, 30, 0, 0, 0, 0]
+        samples = [255-128, 255-167, 255-202, 255-231, 255-249, 255-255, 255-249, 255-231, 255-202, 255-167, 255-128, 88, 53, 24, 6, 0, 6, 24, 53, 88, ]
+        for _ in range(20):
+            self._com._send(RPT_SPKR_PLAY, num_samples << 3, samples)
+            time.sleep(0.01)
+            # currently, timing does not seem to be the reason why  audio sounds awful - stay with time.sleep()
+            # nsleep(9000)
+        self._com._send(RPT_SPKR_ON, OFF)
+        self._playing = False
+
+
 class IRCam(object):
     """
     Represents the infrared camera of the Wiimote.
@@ -540,13 +618,13 @@ class CommunicationHandler(threading.Thread):
             print("socket timeout not implemented with this bluetooth module")
         self.set_report_mode(self.MODE_ACC_IR)
 
-    def _send(self, *bytes_to_send):
+    def _send(self, *bytes_to_send, signed=False):
         _debug("sending " + str(bytes_to_send))
         data_str = self._CMD_SET_REPORT.to_bytes(1, 'big')
         bytes_to_send = _flatten(bytes_to_send)
         bytes_to_send[1] |= int(self.rumble)
         for b in bytes_to_send:
-            data_str += b.to_bytes(1, 'big')
+            data_str += b.to_bytes(1, 'big', signed=signed)
         self._sendsocket.send(data_str)
 
     def run(self):
@@ -604,6 +682,7 @@ class WiiMote(object):
         self.accelerometer = Accelerometer(self)
         self.buttons = Buttons(self)
         self.rumbler = Rumbler(self)
+        self.speaker = Speaker(self)
         self.memory = Memory(self)
         self.ir = IRCam(self)
         """

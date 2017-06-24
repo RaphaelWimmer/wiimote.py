@@ -13,6 +13,7 @@ wm.leds[3] = True
 wm.rumble()
 print(wm.accelerometer, wm.ir )
 wm.buttons.register_callback(print)
+wm.speaker.beep()  # sounds awful
 ~~~~
 
 

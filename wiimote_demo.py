@@ -46,13 +46,16 @@ def print_ir(ir_data):
         print("%4d %4d %2d     " % (ir_obj["x"], ir_obj["y"], ir_obj["size"]))
     print()
 
-wm.ir.register_callback(print_ir)
+#wm.ir.register_callback(print_ir)
 
 while True:
     if wm.buttons["A"]:
         wm.leds[1] = True
         wm.rumble(0.1)
         print((wm.accelerometer))
+    elif wm.buttons["B"]:
+        wm.speaker.beep()
+        #print("beep")
     else:
         wm.leds[1] = False
         pass
