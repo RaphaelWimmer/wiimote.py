@@ -49,6 +49,7 @@ class Timespec(ctypes.Structure):
     _fields_ = [('tv_sec', ctypes.c_long),
                 ('tv_nsec', ctypes.c_long)]
 
+
 libc.nanosleep.argtypes = [ctypes.POINTER(Timespec),
                            ctypes.POINTER(Timespec)]
 nanosleep_req = Timespec()
@@ -67,6 +68,7 @@ def nsleep(us):
     libc.nanosleep(nanosleep_req, nanosleep_rem)
 
 # ########################################################### #
+
 
 VERSION = (0, 4)
 DEBUG = False
@@ -346,6 +348,7 @@ class Rumbler(object):
     """
     Represents the rumble motor of the Wiimote.
     """
+
     def __init__(self, wiimote):
         self._state = False
         self.wiimote = wiimote
@@ -371,6 +374,7 @@ class Speaker(object):
     """
     Represents the speaker of the Wiimote.
     """
+
     def __init__(self, wiimote):
         self._playing = False
         self.wiimote = wiimote
@@ -503,7 +507,7 @@ class IRCam(object):
             callback(self._state)
 
     def handle_report(self, report):
-        assert(report[0] in self.SUPPORTED_REPORTS)
+        assert report[0] in self.SUPPORTED_REPORTS
         # only extended mode for now!
         ir_data = report[6:]
         self._state = []
